@@ -13,17 +13,24 @@
 
 ;;; Code:
 
+(require 'package)
+(setq package-user-dir (expand-file-name "./.packages"))
+(setq package-archives '(("melpa" . "https://melpa.org/packages/")
+                         ("elpa" . "https://elpa.gnu.org/packages/")))
+
+(package-initialize)
+(unless package-archive-contents
+  (package-refresh-contents))
+
+(package-install 'ert)
+(package-install 'llm)
+
+(message "Package setup complete")
+
 (require 'ert)
-
-;; Make sure llm.el is available
-(unless (require 'llm nil t)
-  (error "DSel tests require llm.el to be available"))
-
+(require 'llm)
+(require 'llm-fake)
 (require 'dsel)
-
-;; Check if llm-fake is available
-(unless (require 'llm-fake nil t)
-  (message "Warning: llm-fake not available. Some tests may fail or be skipped."))
 
 ;; Setup test environment
 (defvar dsel-test-llm-provider nil
@@ -31,11 +38,10 @@
 
 (defun dsel-setup-test-environment ()
   "Setup the test environment for DSel tests."
-  (when (featurep 'llm-fake)
-    (setq dsel-test-llm-provider (llm-fake-provider-create))
-    (dsel-configure :lm dsel-test-llm-provider 
-                   :adapter (make-dsel-default-chat-adapter))
-    (message "DSel test environment setup complete.")))
+  (setq dsel-test-llm-provider (llm-fake-provider-create))
+  (dsel-configure :lm dsel-test-llm-provider
+                  :adapter (make-dsel-default-chat-adapter))
+  (message "DSel test environment setup complete."))
 
 ;; Load test files
 (require 'dsel-core-tests)

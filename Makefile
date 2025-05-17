@@ -1,59 +1,28 @@
-# * makem.sh/Makefile --- Script to aid building and testing Emacs Lisp packages
+EMACS ?= emacs
+BATCH = $(EMACS) --batch -Q -L . -L ./tests
 
-# URL: https://github.com/alphapapa/makem.sh
-# Version: 0.5
+.PHONY: all compile test clean
 
-# * Arguments
+all: compile
 
-# For consistency, we use only var=val options, not hyphen-prefixed options.
+compile:
+	@echo "Compiling DSel Elisp files..."
+	@$(BATCH) -f batch-byte-compile *.el
 
-# NOTE: I don't like duplicating the arguments here and in makem.sh,
-# but I haven't been able to find a way to pass arguments which
-# conflict with Make's own arguments through Make to the script.
-# Using -- doesn't seem to do it.
+test:
+	@$(BATCH) -l ./tests/dsel-tests-runner.el -f dsel-run-tests-batch
 
-ifdef install-deps
-	INSTALL_DEPS = "--install-deps"
-endif
-ifdef install-linters
-	INSTALL_LINTERS = "--install-linters"
-endif
+clean:
+	@echo "Cleaning up compilation artifacts..."
+	@rm -f *.elc tests/*.elc
+	@rm -rf tests/.packages
+	@echo "Done."
 
-ifdef sandbox
-	ifeq ($(sandbox), t)
-		SANDBOX = --sandbox
-	else
-		SANDBOX = --sandbox=$(sandbox)
-	endif
-endif
-
-ifdef debug
-	DEBUG = "--debug"
-endif
-
-# ** Verbosity
-
-# Since the "-v" in "make -v" gets intercepted by Make itself, we have
-# to use a variable.
-
-verbose = $(v)
-
-ifneq (,$(findstring vvv,$(verbose)))
-	VERBOSE = "-vvv"
-else ifneq (,$(findstring vv,$(verbose)))
-	VERBOSE = "-vv"
-else ifneq (,$(findstring v,$(verbose)))
-	VERBOSE = "-v"
-endif
-
-# * Rules
-
-# TODO: Handle cases in which "test" or "tests" are called and a
-# directory by that name exists, which can confuse Make.
-
-%:
-	@./makem.sh $(DEBUG) $(VERBOSE) $(SANDBOX) $(INSTALL_DEPS) $(INSTALL_LINTERS) $(@)
-
-.DEFAULT: init
-init:
-	@./makem.sh $(DEBUG) $(VERBOSE) $(SANDBOX) $(INSTALL_DEPS) $(INSTALL_LINTERS)
+.PHONY: help
+help:
+	@echo "DSel Makefile targets:"
+	@echo "  all      - Default target. Same as 'compile'"
+	@echo "  compile  - Byte-compile all Elisp files"
+	@echo "  test     - Run tests (requires llm.el package)"
+	@echo "  clean    - Remove all .elc files and test packages"
+	@echo "  help     - Show this help message"
