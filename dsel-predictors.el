@@ -126,7 +126,11 @@ PLIST may include:
 - :lm specific llm.el provider
 - :config plist of LM-specific parameters
 - :name symbol for the module name"
-  (let* ((rationale-field-name (or (plist-get plist :rationale-field-name)
+  (let* ((instructions (dsel-signature-instructions original-signature))
+         (sig-name (dsel-signature-name original-signature))
+         (input-fields (dsel-signature-input-fields original-signature))
+         (output-fields (dsel-signature-output-fields original-signature))
+         (rationale-field-name (or (plist-get plist :rationale-field-name)
                                   'rationale))
          (rationale-field-prefix (or (plist-get plist :rationale-field-prefix)
                                     "Rationale: "))
@@ -137,12 +141,12 @@ PLIST may include:
                                       :prefix ,rationale-field-prefix))
          
          ;; Create COT signature by prepending rationale field
-         (cot-signature (make-dsel-signature
-                         (dsel-signature-instructions original-signature)
-                         :name (dsel-signature-name original-signature)
-                         :input-fields (dsel-signature-input-fields original-signature)
+         (cot-signature (dsel-make-signature
+                         instructions
+                         :name sig-name
+                         :input-fields input-fields
                          :output-fields (cons (cons rationale-field-name rationale-field-plist)
-                                             (dsel-signature-output-fields original-signature)))))
+                                             output-fields))))
     
     ;; Create the predictor with the COT signature
     (let ((predictor (dsel-make-predict

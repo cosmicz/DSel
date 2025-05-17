@@ -16,21 +16,6 @@
 (require 'ert)
 (require 'dsel)
 
-;; Stub for llm.el when running tests
-
-(defvar llm-test-stub-active nil
-  "When non-nil, uses stub implementations for LLM functions.")
-
-(when llm-test-stub-active
-  (defun llm-make-chat-prompt (&rest plist)
-    "Create a chat prompt structure from PLIST for testing."
-    (append (list :type 'llm-chat) plist))
-
-  (defun llm-chat (provider prompt &optional config)
-    "Simulate an LLM chat with PROVIDER using PROMPT and optional CONFIG.
-Returns a stubbed response for testing."
-    (format "Sentiment: positive\nConfidence: 0.95")))
-
 ;; Test dsel-signature
 
 (ert-deftest dsel-test-signature ()
@@ -62,8 +47,8 @@ Returns a stubbed response for testing."
 (ert-deftest dsel-test-example ()
   "Test creation and manipulation of dsel-example."
   (let* ((example (dsel-make-example
-                  :text "I love this product!"
-                  :sentiment "positive"))
+                   :text "I love this product!"
+                   :sentiment "positive"))
          (input-example (dsel-example-with-inputs example 'text)))
     
     ;; Test structure
@@ -74,10 +59,10 @@ Returns a stubbed response for testing."
     ;; Test input/label separation
     (should (= (length (dsel-example-input-keys input-example)) 1))
     (should (equal (dsel-example-inputs input-example)
-                  '((text . "I love this product!"))))
+                   '((text . "I love this product!"))))
     (should (equal (dsel-example-labels input-example)
-                  '((sentiment . "positive"))))
-    
+                   '((sentiment . "positive"))))
+
     ;; Test field modification
     (dsel-set-example-field example 'sentiment "very positive")
     (should (equal (dsel-example-field example 'sentiment) "very positive"))))
@@ -88,11 +73,11 @@ Returns a stubbed response for testing."
   "Test creation and behavior of dsel-prediction."
   (let* ((fake-provider "fake-llm")
          (prediction (dsel-make-prediction
-                     :text "I love this product!"
-                     :sentiment "positive"
-                     :lm-provider fake-provider
-                     :raw-response "Sentiment: positive")))
-    
+                      :text "I love this product!"
+                      :sentiment "positive"
+                      :lm-provider fake-provider
+                      :raw-response "Sentiment: positive")))
+
     ;; Test structure
     (should (dsel-prediction-p prediction))
     (should (dsel-example-p prediction)) ; Should also be an example

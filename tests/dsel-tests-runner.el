@@ -36,9 +36,16 @@
 (defvar dsel-test-llm-provider nil
   "LLM provider used during tests.")
 
+(defvar dsel-test-llm-chat-response
+  (lambda ()
+    "Chat action response.")
+  "Function to simulate LLM chat action.")
+
 (defun dsel-setup-test-environment ()
-  "Setup the test environment for DSel tests."
-  (setq dsel-test-llm-provider (llm-fake-provider-create))
+  "Setup the test environment for DSel."
+  (setq dsel-test-llm-provider (make-llm-fake
+                                :output-to-buffer "*dsel-test-llm-fake-output-buffer*"
+                                :chat-action-func dsel-test-llm-chat-response))
   (dsel-configure :lm dsel-test-llm-provider
                   :adapter (make-dsel-default-chat-adapter))
   (message "DSel test environment setup complete."))
