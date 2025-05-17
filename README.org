@@ -1,0 +1,148 @@
+#+TITLE: DSel (Diesel)
+#+AUTHOR: 
+#+DATE: 2024
+
+* Overview
+
+DSel is a DSPy-inspired framework for Emacs Lisp that provides a structured way to build applications powered by Large Language Models (LLMs). It leverages the existing =llm.el= library for backend LLM interactions.
+
+* Features
+
+- *Declarative Signatures*: Define LLM tasks using structured "signatures"
+- *Modular Programs*: Compose simple modules into complex applications
+- *Native Optimization*: Use native Elisp optimizers to improve LLM performance
+- *Leverage =llm.el=*: Built on top of the existing =llm.el= infrastructure
+- *Elisp Idioms*: Uses familiar Elisp structures and conventions
+
+* Installation
+
+DSel requires Emacs 28.1 or newer and depends on the =llm.el= package.
+
+** Manual installation
+
+Clone this repository:
+
+#+begin_src bash
+git clone https://github.com/yourusername/dsel.git
+#+end_src
+
+Add the following to your Emacs configuration:
+
+#+begin_src emacs-lisp
+(add-to-list 'load-path "/path/to/dsel")
+(require 'dsel)
+#+end_src
+
+* Usage
+
+** Define a Signature
+
+A signature declares the inputs and outputs for an LLM task:
+
+#+begin_src emacs-lisp
+(setq sentiment-signature
+      (dsel-make-signature
+       "Classify the sentiment of the given text as positive, negative, or neutral."
+       :name 'sentiment-classifier
+       :input-fields '((text . (:type string :desc "The text to classify")))
+       :output-fields '((sentiment . (:type string :desc "The sentiment: positive, negative, or neutral")))))
+#+end_src
+
+** Create a Predictor
+
+A predictor is a module that uses an LLM to generate predictions based on a signature:
+
+#+begin_src emacs-lisp
+(setq sentiment-predictor
+      (dsel-make-predict
+       sentiment-signature
+       :name 'sentiment-predictor
+       :config '(:temperature 0.2)))
+#+end_src
+
+** Use Few-Shot Examples
+
+Add examples to improve performance:
+
+#+begin_src emacs-lisp
+(setq examples
+      (list
+       (dsel-example-with-inputs
+        (dsel-make-example
+         :text "I love this product!"
+         :sentiment "positive")
+        'text)
+       (dsel-example-with-inputs
+        (dsel-make-example
+         :text "I hate this product!"
+         :sentiment "negative")
+        'text)))
+
+(setf (dsel-predict-demos sentiment-predictor) examples)
+#+end_src
+
+** Generate Predictions
+
+Use the predictor to generate predictions:
+
+#+begin_src emacs-lisp
+(setq prediction
+      (dsel-forward sentiment-predictor :text "This product is okay."))
+
+;; Access the prediction
+(dsel-example-field prediction 'sentiment) ;; => "neutral"
+#+end_src
+
+** Use Chain-of-Thought
+
+For complex reasoning, use chain-of-thought:
+
+#+begin_src emacs-lisp
+(setq cot-predictor
+      (dsel-make-chain-of-thought
+       sentiment-signature
+       :name 'cot-sentiment-predictor
+       :rationale-field-name 'reasoning
+       :rationale-field-desc "Explain why you classified the text this way"))
+
+(setq cot-prediction
+      (dsel-forward cot-predictor :text "The product works, but it's expensive."))
+
+;; Access the prediction
+(dsel-example-field cot-prediction 'reasoning) ;; => "The text indicates..."
+(dsel-example-field cot-prediction 'sentiment) ;; => "mixed"
+#+end_src
+
+** Optimize with Few-Shot Learning
+
+Improve performance by selecting optimal few-shot examples:
+
+#+begin_src emacs-lisp
+(setq labeled-fewshot
+      (dsel-make-labeled-fewshot
+       :metric (lambda (gold pred)
+                 (string= (dsel-example-field gold 'sentiment)
+                          (dsel-example-field pred 'sentiment)))
+       :k 3))
+
+(setq optimized-predictor
+      (dsel-compile labeled-fewshot sentiment-predictor :trainset training-data))
+#+end_src
+
+* Architecture
+
+DSel consists of several core components:
+
+1. *Signatures*: Define the inputs and outputs for an LLM task
+2. *Modules*: Base class for composable LLM components
+3. *Predictors*: Execute LLM calls with specific signatures
+4. *Adapters*: Bridge between DSel and the LLM backend (=llm.el=)
+5. *Optimizers*: Improve LLM performance through techniques like few-shot learning
+
+* Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+* License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

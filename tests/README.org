@@ -1,0 +1,44 @@
+#+TITLE: DSel Tests
+#+AUTHOR: 
+#+DATE: 2024
+
+* Overview
+
+This directory contains tests for the DSel (Diesel) framework.
+
+* Running Tests
+
+Tests can be run using the provided Makefile:
+
+#+begin_src bash
+# From the project root:
+make test
+#+end_src
+
+Or directly from Emacs:
+
+1. Load DSel and the test files:
+#+begin_src emacs-lisp
+(require 'dsel)
+(require 'dsel-tests-runner)
+#+end_src
+
+2. Run the tests interactively:
+#+begin_src emacs-lisp
+(dsel-run-tests)
+#+end_src
+
+* Test Structure
+
+- =dsel-core-tests.el= - Tests for core data structures (signatures, examples, predictions)
+- =dsel-adapter-tests.el= - Tests for adapters (prompt formatting, output parsing)
+- =dsel-tests-runner.el= - Test runner and helper functions
+
+* Adding New Tests
+
+When adding new tests:
+
+1. Create a new test file in this directory
+2. Add =(require 'your-test-file)= to =dsel-tests-runner.el=
+3. Follow the =ert= testing conventions (use =ert-deftest= and =should= assertions)
+4. Prefix test names with =dsel-test-= so they're picked up by the test runner
