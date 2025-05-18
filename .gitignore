@@ -1,6 +1,11 @@
+# -*- mode: gitignore; -*-
+
 .DS_Store
 .idea
 *.log
 tmp/
+
+*.elc
+*-autoloads.el
 
 .packages
