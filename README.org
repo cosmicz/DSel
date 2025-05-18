@@ -11,7 +11,7 @@ DSel is a DSPy-inspired framework for Emacs Lisp that provides a structured way 
 - *Declarative Signatures*: Define LLM tasks using structured "signatures"
 - *Modular Programs*: Compose simple modules into complex applications
 - *Native Optimization*: Use native Elisp optimizers to improve LLM performance
-- *Leverage =llm.el=*: Built on top of the existing =llm.el= infrastructure
+- *Leverage llm.el*: Built on top of the existing =llm.el= infrastructure
 - *Elisp Idioms*: Uses familiar Elisp structures and conventions
 
 * Installation
