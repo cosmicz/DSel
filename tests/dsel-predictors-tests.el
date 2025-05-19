@@ -23,9 +23,9 @@
          (expected-raw-response "Rationale: Default Fake Rationale\nB: default_b\nY: default_y")
          (prediction (dsel-forward predictor :foo "hello")))
 
-    (message "DEBUG: Prediction object in test: %S" prediction)
-    (message "DEBUG: Prediction fields: %S" (dsel-example-fields prediction))
-    (message "DEBUG: Value for 'foo': %S" (dsel-example-field prediction 'foo))
+    ;; (message "DEBUG: Prediction object in test: %S" prediction)
+    ;; (message "DEBUG: Prediction fields: %S" (dsel-example-fields prediction))
+    ;; (message "DEBUG: Value for 'foo': %S" (dsel-example-field prediction 'foo))
 
 
     (should (dsel-prediction-p prediction))

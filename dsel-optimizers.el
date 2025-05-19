@@ -84,15 +84,15 @@ PLIST may include:
     (let ((student-predictors (dsel-collect-predictors optimized-student))
           (teacher-predictors (dsel-collect-predictors teacher-program)))
 
-      (message "Bootstrap DBG: Student predictors: %S" student-predictors)
-      (message "Bootstrap DBG: Teacher predictors: %S" teacher-predictors)
+      ;; (message "Bootstrap DBG: Student predictors: %S" student-predictors)
+      ;; (message "Bootstrap DBG: Teacher predictors: %S" teacher-predictors)
       (cl-loop for predictor in student-predictors
                for teacher-predictor in teacher-predictors
                when (and (dsel-predict-p predictor)
                          (dsel-predict-p teacher-predictor))
                do
                ;; Initialize with labeled examples
-               (message "Bootstrap DBG: Initializing with labeled examples")
+               ;; (message "Bootstrap DBG: Initializing with labeled examples")
                (let ((labeled-demos (cl-subseq (copy-sequence trainset)
                                                0 (min k-labeled (length trainset)))))
                  (setf (dsel-predict-demos predictor) labeled-demos)
@@ -102,10 +102,10 @@ PLIST may include:
                        (remaining-trainset (cl-subseq trainset
                                                       (min k-labeled (length trainset)))))
 
-                   (message "Bootstrap DBG: Need %d more bootstrapped examples; Remaining trainset: %S" num-bootstrapped-needed remaining-trainset)
+                   ;; (message "Bootstrap DBG: Need %d more bootstrapped examples; Remaining trainset: %S" num-bootstrapped-needed remaining-trainset)
                    (dolist (train-example remaining-trainset)
                      (when (<= num-bootstrapped-needed 0)
-                       (message "Bootstrap DBG: No more bootstrapped examples needed")
+                       ;; (message "Bootstrap DBG: No more bootstrapped examples needed")
                        (cl-return))
 
                      ;; Skip if already in demos
@@ -113,7 +113,7 @@ PLIST may include:
                                       :test (lambda (a b)
                                               (equal (dsel-example-fields a)
                                                      (dsel-example-fields b))))
-                       (message "Bootstrap DBG: Already in demos, skipping")
+                       ;; (message "Bootstrap DBG: Already in demos, skipping")
                        (cl-continue))
 
                      ;; Use current student demos for teacher
@@ -125,24 +125,24 @@ PLIST may include:
                             (input-plist
                              (cl-loop for (field . value) in inputs-alist
                                       append (list field value)))
-                            (_ (message "Bootstrap DBG: Metric Input - Inputs: %S" input-plist))
+                            ;; (_ (message "Bootstrap DBG: Metric Input - Inputs: %S" input-plist))
                             ;; Have the teacher generate a prediction
                             (teacher-prediction
                              (dsel-with-settings ((lm (or (dsel-predict-lm teacher-predictor)
                                                           dsel-settings--lm)))
-                               (message "Bootstrap DBG: before apply")
+                               ;; (message "Bootstrap DBG: before apply")
                                (apply #'dsel-forward
                                       teacher-predictor
                                       (append input-plist teacher-config))))
 
-                            (_ (message "Bootstrap DBG: Metric Input - Teacher Prediction: %S" teacher-prediction))
-                            (_ (progn
-                                 (message "Bootstrap DBG: Metric Input - Gold Example: %S" train-example)
-                                 (message "Bootstrap DBG: Metric Input - Teacher Prediction: %S" teacher-prediction)
-                                 (message "Bootstrap DBG: Metric Input - teacher-prediction fields: %S" (dsel-example-fields teacher-prediction))
-                                 (message "Bootstrap DBG: Metric Input - Gold 'b': %S" (dsel-example-field train-example 'b))
-                                 (message "Bootstrap DBG: Metric Input - Pred 'b': %S" (dsel-example-field teacher-prediction 'b))
-                                 ))
+                            ;; (_ (message "Bootstrap DBG: Metric Input - Teacher Prediction: %S" teacher-prediction))
+                            ;; (_ (progn
+                            ;;      (message "Bootstrap DBG: Metric Input - Gold Example: %S" train-example)
+                            ;;      (message "Bootstrap DBG: Metric Input - Teacher Prediction: %S" teacher-prediction)
+                            ;;      (message "Bootstrap DBG: Metric Input - teacher-prediction fields: %S" (dsel-example-fields teacher-prediction))
+                            ;;      (message "Bootstrap DBG: Metric Input - Gold 'b': %S" (dsel-example-field train-example 'b))
+                            ;;      (message "Bootstrap DBG: Metric Input - Pred 'b': %S" (dsel-example-field teacher-prediction 'b))
+                            ;;      ))
 
                             ;; Evaluate the prediction
                             (score (funcall (dsel-optimizer-metric optimizer)
