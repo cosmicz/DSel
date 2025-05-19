@@ -34,14 +34,14 @@
 
 (cl-defmethod dsel-forward ((predict dsel-predict) &rest kwargs)
   "Execute PREDICT with KWARGS and return a prediction."
-  (message "DSFWD: Entered for predict: %S, kwargs: %S" predict kwargs)
+  ;; (message "DSFWD: Entered for predict: %S, kwargs: %S" predict kwargs)
   (let* ((lm-to-use (or (dsel-predict-lm predict) dsel-settings--lm))
          (adapter-to-use (or dsel-settings--adapter
                              (make-dsel-default-chat-adapter)))
          ;; Convert kwargs to inputs-alist
          (current-inputs-alist
           (let ((inputs nil))
-            (message "Initial predict object for forward: %S" predict)
+            ;; (message "Initial predict object for forward: %S" predict)
             (while kwargs
               (let ((key (pop kwargs))
                     (value (pop kwargs)))
@@ -50,7 +50,7 @@
             (nreverse inputs)))
 
 
-         (_ (message "DSFWD: current-inputs-alist: %S" current-inputs-alist))
+         ;; (_ (message "DSFWD: current-inputs-alist: %S" current-inputs-alist))
 
          ;; Format the prompt
          (llm-prompt (dsel-adapter-format-prompt
@@ -59,17 +59,17 @@
                       (dsel-predict-demos predict)
                       current-inputs-alist))
 
-         (_ (message "DSFWD: llm-prompt: %S" llm-prompt))
+         ;; (_ (message "DSFWD: llm-prompt: %S" llm-prompt))
 
          ;; Merge config with defaults
          (merged-config (or (dsel-predict-config predict) nil))
 
-         (_ (message "DSFWD: making LLM call"))
+         ;; (_ (message "DSFWD: making LLM call"))
 
          ;; Make the LLM call
          (raw-llm-response (llm-chat lm-to-use llm-prompt merged-config))
 
-         (_ (message "DSFWD: raw-llm-response: %S" raw-llm-response))
+         ;; (_ (message "DSFWD: raw-llm-response: %S" raw-llm-response))
 
          ;; Parse the response
          (parsed-outputs-alist
@@ -78,7 +78,7 @@
            (dsel-predict-signature predict)
            raw-llm-response))
 
-         (_ (message "DSFWD: parsed-outputs-alist: %S" parsed-outputs-alist))
+         ;; (_ (message "DSFWD: parsed-outputs-alist: %S" parsed-outputs-alist))
 
          (prediction
           (apply #'dsel-make-prediction
