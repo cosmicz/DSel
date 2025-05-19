@@ -40,24 +40,30 @@ Add the following to your Emacs configuration:
 A signature declares the inputs and outputs for an LLM task:
 
 #+begin_src emacs-lisp
-(setq sentiment-signature
-      (dsel-make-signature
-       "Classify the sentiment of the given text as positive, negative, or neutral."
-       :name 'sentiment-classifier
-       :input-fields '((text . (:type string :desc "The text to classify")))
-       :output-fields '((sentiment . (:type string :desc "The sentiment: positive, negative, or neutral")))))
+(dsel-defsignature sentiment-signature
+  "Classify the sentiment of the given text as positive, negative, or neutral."
+  :input-fields '((text . (:type string :desc "The text to classify")))
+  :output-fields '((sentiment . (:type string :desc "The sentiment: positive, negative, or neutral"))))
 #+end_src
+
+#+RESULTS:
+#+begin_example elisp
+#s(dsel-signature sentiment-signature
+                  "Classify the sentiment of the given text as positive, negative, or neutral."
+                  ((text :type string :desc "The text to classify" :prefix
+                         "Text: "))
+                  ((sentiment :type string :desc
+                              "The sentiment: positive, negative, or neutral"
+                              :prefix "Sentiment: ")))
+#+end_example
 
 ** Create a Predictor
 
 A predictor is a module that uses an LLM to generate predictions based on a signature:
 
 #+begin_src emacs-lisp
-(setq sentiment-predictor
-      (dsel-make-predict
-       sentiment-signature
-       :name 'sentiment-predictor
-       :config '(:temperature 0.2)))
+(dsel-defpredict sentiment-predictor sentiment-signature
+  :config '(:temperature 0.2))
 #+end_src
 
 ** Use Few-Shot Examples
@@ -98,12 +104,9 @@ Use the predictor to generate predictions:
 For complex reasoning, use chain-of-thought:
 
 #+begin_src emacs-lisp
-(setq cot-predictor
-      (dsel-make-chain-of-thought
-       sentiment-signature
-       :name 'cot-sentiment-predictor
-       :rationale-field-name 'reasoning
-       :rationale-field-desc "Explain why you classified the text this way"))
+(dsel-defchain-of-thought cot-predictor sentiment-signature
+  :rationale-field-name 'reasoning
+  :rationale-field-desc "Explain why you classified the text this way")
 
 (setq cot-prediction
       (dsel-forward cot-predictor :text "The product works, but it's expensive."))
@@ -118,15 +121,14 @@ For complex reasoning, use chain-of-thought:
 Improve performance by selecting optimal few-shot examples:
 
 #+begin_src emacs-lisp
-(setq labeled-fewshot
-      (dsel-make-labeled-fewshot
-       :metric (lambda (gold pred)
-                 (string= (dsel-example-field gold 'sentiment)
-                          (dsel-example-field pred 'sentiment)))
-       :k 3))
+(dsel-defoptimizer sentiment-optimizer labeled-fewshot
+  :metric (lambda (gold pred)
+            (string= (dsel-example-field gold 'sentiment)
+                     (dsel-example-field pred 'sentiment)))
+  :k 3)
 
 (setq optimized-predictor
-      (dsel-compile labeled-fewshot sentiment-predictor :trainset training-data))
+      (dsel-compile sentiment-optimizer sentiment-predictor :trainset training-data))
 #+end_src
 
 * Architecture

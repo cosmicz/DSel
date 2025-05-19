@@ -9,20 +9,15 @@
 ;; Configure DSel to use the default LLM provider from llm.el
 (dsel-configure :adapter (make-dsel-default-chat-adapter))
 
-;; Define the signature for our sentiment classification task
-(setq sentiment-signature
-      (dsel-make-signature
-       "Classify the sentiment of the given text as positive, negative, or neutral."
-       :name 'sentiment-classifier
-       :input-fields '((text . (:type string :desc "The text to classify")))
-       :output-fields '((sentiment . (:type string :desc "The sentiment: positive, negative, or neutral")))))
+;; Define the signature for our sentiment classification task using the new macro
+(dsel-defsignature sentiment-signature
+  "Classify the sentiment of the given text as positive, negative, or neutral."
+  :input-fields '((text . (:type string :desc "The text to classify")))
+  :output-fields '((sentiment . (:type string :desc "The sentiment: positive, negative, or neutral"))))
 
-;; Create a basic predictor using the signature
-(setq sentiment-predictor
-      (dsel-make-predict
-       sentiment-signature
-       :name 'sentiment-predictor
-       :config '(:temperature 0.2)))
+;; Create a basic predictor using the new macro
+(dsel-defpredict sentiment-predictor sentiment-signature
+  :config '(:temperature 0.2))
 
 ;; Add some few-shot examples to improve performance
 (setq examples
@@ -54,13 +49,10 @@
     (message "Text: %s\nSentiment: %s" text sentiment)
     sentiment))
 
-;; Create a chain-of-thought version for more complex analysis
-(setq cot-predictor
-      (dsel-make-chain-of-thought
-       sentiment-signature
-       :name 'cot-sentiment-predictor
-       :rationale-field-name 'reasoning
-       :rationale-field-desc "Explain why you classified the text this way"))
+;; Create a chain-of-thought version for more complex analysis using the new macro
+(dsel-defchain-of-thought cot-predictor sentiment-signature
+  :rationale-field-name 'reasoning
+  :rationale-field-desc "Explain why you classified the text this way")
 
 ;; Function to classify with reasoning
 (defun classify-sentiment-with-reasoning (text)
@@ -74,6 +66,22 @@
 ;; Usage examples:
 ;; (classify-sentiment "I really enjoyed using this product!")
 ;; (classify-sentiment-with-reasoning "The product works as expected, but it's more expensive than alternatives.")
+
+;; Example of using an optimizer with the new macro
+(dsel-defoptimizer sentiment-optimizer labeled-fewshot
+  :metric (lambda (gold pred)
+            (string= (dsel-example-field gold 'sentiment)
+                     (dsel-example-field pred 'sentiment)))
+  :k 3)
+
+;; Function to compile (optimize) a predictor using our optimizer
+(defun optimize-sentiment-predictor (predictor trainset)
+  "Optimize PREDICTOR using TRAINSET examples."
+  (dsel-compile sentiment-optimizer predictor :trainset trainset))
+
+;; Usage:
+;; (setq optimized-predictor (optimize-sentiment-predictor sentiment-predictor examples))
+;; (classify-with-optimized-predictor "This product is just okay.")
 
 (provide 'sentiment-classifier)
 ;;; sentiment-classifier.el ends here
