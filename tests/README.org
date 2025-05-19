@@ -32,6 +32,8 @@ Or directly from Emacs:
 
 - =dsel-core-tests.el= - Tests for core data structures (signatures, examples, predictions)
 - =dsel-adapter-tests.el= - Tests for adapters (prompt formatting, output parsing)
+- =dsel-predictors-tests.el= - Tests for predictors and chain-of-thought modules
+- =dsel-optimizers-tests.el= - Tests for optimizers (labeled and bootstrap few-shot)
 - =dsel-tests-runner.el= - Test runner and helper functions
 
 * Adding New Tests

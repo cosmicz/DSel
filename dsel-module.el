@@ -52,18 +52,21 @@ This finds named predictors at any depth.")
         (push (cons (dsel-module-name predictor) predictor) result)))
     (nreverse result)))
 
-(cl-defgeneric dsel-module-reset-copy (module)
-  "Return a new copy of MODULE with its optimizable state reset.")
+(cl-defgeneric dsel-module-reset-optimizable-state (module)
+  "Generic function to reset optimizer-specific state on a module.")
+
+(cl-defmethod dsel-module-reset-optimizable-state ((module dsel-module))
+  "Base method: Resets 'compiled-p to nil."
+  (setf (dsel-module-compiled-p module) nil))
 
 (cl-defmethod dsel-module-reset-copy ((module dsel-module))
   "Return a new copy of MODULE with its optimizable state reset."
   (let ((copy (dsel-module-deepcopy module)))
-    (setf (dsel-module-compiled-p copy) nil)
-    ;; Reset any specific optimization state for all collected predictors
-    (dolist (predictor (dsel-collect-predictors copy))
-      (when (and (fboundp 'dsel-predict-p) (dsel-predict-p predictor)
-                (fboundp 'dsel-predict-demos))
-        (setf (dsel-predict-demos predictor) nil)))
+    (dolist (m (dsel-collect-predictors copy))
+      (dsel-module-reset-optimizable-state m))
+    ;; Also reset the top-level module itself if it's not a predictor
+    (unless (and (fboundp 'dsel-predict-p) (dsel-predict-p copy))
+      (dsel-module-reset-optimizable-state copy))
     copy))
 
 (cl-defgeneric dsel-module-deepcopy (module)

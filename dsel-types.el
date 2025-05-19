@@ -95,7 +95,7 @@ Return a `dsel-example' with fields from PLIST and empty input-keys."
             (value (pop plist-copy)))
         (when key  ; Always include the field even if value is nil
           ;; Convert :keyword to 'keyword
-          (push (cons (intern (substring (symbol-name key) 1)) value) fields))))
+          (push (cons (dsel-keyword-to-symbol key) value) fields))))
     (make-dsel-example :fields (nreverse fields))))
 
 (defun dsel-example-with-inputs (example &rest input-keys)
@@ -114,6 +114,18 @@ Return a `dsel-example' with fields from PLIST and empty input-keys."
         (when pair
           (push pair result))))
     (nreverse result)))
+
+(defun dsel-create-examples (example-plists-list &key input-keys)
+  "Create a list of `dsel-example's from EXAMPLE-PLISTS-LIST.
+Optionally set common INPUT-KEYS for all created examples.
+INPUT-KEYS should be a list of symbols, e.g., '(key1 key2) or just '(key1)."
+  (mapcar
+   (lambda (plist)
+     (let ((example (apply #'dsel-make-example plist)))
+       (if input-keys
+           (apply #'dsel-example-with-inputs example input-keys)
+         example)))
+   example-plists-list))
 
 (defun dsel-example-labels (example)
   "Return an alist of non-input (label) fields and values from EXAMPLE."
@@ -166,12 +178,36 @@ PLIST includes field-value pairs and may include:
         (when (and key 
                    (not (memq key '(:lm-provider :raw-response :completions))))
           ;; Convert :keyword to 'keyword for field names
-          (push (cons (intern (substring (symbol-name key) 1)) value) fields))))
+          (push (cons (dsel-keyword-to-symbol key) value) fields))))
     
     (make-dsel-prediction :fields (nreverse fields)
                           :completions completions
                           :lm-provider lm-provider
                           :raw-response raw-response)))
+
+(defun dsel-keyword-to-symbol (keyword)
+  "Convert KEYWORD (e.g., :text) to a symbol (e.g., 'text).
+If KEYWORD is already a symbol, return it unchanged.
+If KEYWORD is not a keyword or symbol, signal an error."
+  (cond
+   ((keywordp keyword)
+    (intern (substring (symbol-name keyword) 1)))
+   ((symbolp keyword) ; Allow passing symbols through, idempotent
+    keyword)
+   (t
+    (error "Argument is not a keyword or symbol: %s" keyword))))
+
+(defun dsel-symbol-to-keyword (symbol)
+  "Convert SYMBOL (e.g., 'text) to a keyword (e.g., :text).
+If SYMBOL is already a keyword, return it unchanged.
+If SYMBOL is not a symbol or keyword, signal an error."
+  (cond
+   ((symbolp symbol)
+    (intern (concat ":" (symbol-name symbol))))
+   ((keywordp symbol) ; Allow passing keywords through, idempotent
+    symbol)
+   (t
+    (error "Argument is not a symbol or keyword: %s" symbol))))
 
 (provide 'dsel-types)
 ;;; dsel-types.el ends here

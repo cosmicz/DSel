@@ -29,9 +29,14 @@ git clone https://github.com/yourusername/dsel.git
 Add the following to your Emacs configuration:
 
 #+begin_src emacs-lisp
-(add-to-list 'load-path "/path/to/dsel")
+(add-to-list 'load-path "~/dev/dsel")
 (require 'dsel)
 #+end_src
+
+#+RESULTS:
+#+begin_example elisp
+dsel
+#+end_example
 
 * Usage
 

@@ -1,4 +1,5 @@
 EMACS ?= emacs
+
 BATCH = $(EMACS) --batch -Q -L . -L ./tests
 
 .PHONY: all compile test clean

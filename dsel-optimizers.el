@@ -74,76 +74,96 @@ PLIST may include:
          (teacher (plist-get plist :teacher))
          (optimized-student (dsel-module-reset-copy student))
          (teacher-program (if teacher
-                             (dsel-module-deepcopy teacher)
-                           (dsel-module-deepcopy student)))
+                              (dsel-module-deepcopy teacher)
+                            (dsel-module-deepcopy student)))
          (k-labeled (dsel-bootstrap-fewshot-k-labeled optimizer))
          (k-bootstrapped (dsel-bootstrap-fewshot-k-bootstrapped optimizer))
          (teacher-config (dsel-bootstrap-fewshot-teacher-config optimizer)))
-    
+
     ;; Process each predictor
     (let ((student-predictors (dsel-collect-predictors optimized-student))
           (teacher-predictors (dsel-collect-predictors teacher-program)))
-      
+
+      (message "Bootstrap DBG: Student predictors: %S" student-predictors)
+      (message "Bootstrap DBG: Teacher predictors: %S" teacher-predictors)
       (cl-loop for predictor in student-predictors
-             for teacher-predictor in teacher-predictors
-             when (and (dsel-predict-p predictor)
-                      (dsel-predict-p teacher-predictor))
-             do
-             ;; Initialize with labeled examples
-             (let ((labeled-demos (cl-subseq (copy-sequence trainset) 
-                                           0 (min k-labeled (length trainset)))))
-               (setf (dsel-predict-demos predictor) labeled-demos)
-               
-               ;; Generate bootstrapped examples
-               (let ((num-bootstrapped-needed k-bootstrapped)
-                     (remaining-trainset (cl-subseq trainset 
-                                                  (min k-labeled (length trainset)))))
-                 
-                 (dolist (train-example remaining-trainset)
-                   (when (<= num-bootstrapped-needed 0)
-                     (cl-return))
-                   
-                   ;; Skip if already in demos
-                   (when (cl-member train-example (dsel-predict-demos predictor)
-                                   :test (lambda (a b)
-                                           (equal (dsel-example-fields a)
-                                                 (dsel-example-fields b))))
-                     (cl-continue))
-                   
-                   ;; Use current student demos for teacher
-                   (setf (dsel-predict-demos teacher-predictor)
-                         (dsel-predict-demos predictor))
-                   
-                   ;; Get inputs from the training example
-                   (let* ((inputs-alist (dsel-example-inputs train-example))
-                          (input-plist
-                           (cl-loop for (field . value) in inputs-alist
-                                  append (list field value)))
-                          ;; Have the teacher generate a prediction
-                          (teacher-prediction
-                           (dsel-with-settings ((lm (or (dsel-predict-lm teacher-predictor)
-                                                       dsel-settings--lm)))
-                                              (apply #'dsel-forward 
-                                                     teacher-predictor 
-                                                     (append input-plist teacher-config))))
-                          ;; Evaluate the prediction
-                          (score (funcall (dsel-optimizer-metric optimizer)
-                                         train-example
-                                         teacher-prediction)))
-                     
-                     ;; If prediction is good, add it as a demo
-                     (when (or (eq score t) (and (numberp score) (> score 0)))
-                       ;; Create a new demo with inputs and teacher's outputs
-                       (let* ((example-inputs (dsel-example-inputs train-example))
-                              (prediction-outputs (dsel-example-labels teacher-prediction))
-                              (new-demo-fields
-                               (append example-inputs prediction-outputs))
-                              (new-demo (make-dsel-example
-                                        :fields new-demo-fields
-                                        :input-keys (mapcar #'car example-inputs))))
-                         (push new-demo (dsel-predict-demos predictor))
-                         (cl-decf num-bootstrapped-needed)))))))))
-    
+               for teacher-predictor in teacher-predictors
+               when (and (dsel-predict-p predictor)
+                         (dsel-predict-p teacher-predictor))
+               do
+               ;; Initialize with labeled examples
+               (message "Bootstrap DBG: Initializing with labeled examples")
+               (let ((labeled-demos (cl-subseq (copy-sequence trainset)
+                                               0 (min k-labeled (length trainset)))))
+                 (setf (dsel-predict-demos predictor) labeled-demos)
+
+                 ;; Generate bootstrapped examples
+                 (let ((num-bootstrapped-needed k-bootstrapped)
+                       (remaining-trainset (cl-subseq trainset
+                                                      (min k-labeled (length trainset)))))
+
+                   (message "Bootstrap DBG: Need %d more bootstrapped examples; Remaining trainset: %S" num-bootstrapped-needed remaining-trainset)
+                   (dolist (train-example remaining-trainset)
+                     (when (<= num-bootstrapped-needed 0)
+                       (message "Bootstrap DBG: No more bootstrapped examples needed")
+                       (cl-return))
+
+                     ;; Skip if already in demos
+                     (when (cl-member train-example (dsel-predict-demos predictor)
+                                      :test (lambda (a b)
+                                              (equal (dsel-example-fields a)
+                                                     (dsel-example-fields b))))
+                       (message "Bootstrap DBG: Already in demos, skipping")
+                       (cl-continue))
+
+                     ;; Use current student demos for teacher
+                     (setf (dsel-predict-demos teacher-predictor)
+                           (dsel-predict-demos predictor))
+
+                     ;; Get inputs from the training example
+                     (let* ((inputs-alist (dsel-example-inputs train-example))
+                            (input-plist
+                             (cl-loop for (field . value) in inputs-alist
+                                      append (list field value)))
+                            (_ (message "Bootstrap DBG: Metric Input - Inputs: %S" input-plist))
+                            ;; Have the teacher generate a prediction
+                            (teacher-prediction
+                             (dsel-with-settings ((lm (or (dsel-predict-lm teacher-predictor)
+                                                          dsel-settings--lm)))
+                               (message "Bootstrap DBG: before apply")
+                               (apply #'dsel-forward
+                                      teacher-predictor
+                                      (append input-plist teacher-config))))
+
+                            (_ (message "Bootstrap DBG: Metric Input - Teacher Prediction: %S" teacher-prediction))
+                            (_ (progn
+                                 (message "Bootstrap DBG: Metric Input - Gold Example: %S" train-example)
+                                 (message "Bootstrap DBG: Metric Input - Teacher Prediction: %S" teacher-prediction)
+                                 (message "Bootstrap DBG: Metric Input - teacher-prediction fields: %S" (dsel-example-fields teacher-prediction))
+                                 (message "Bootstrap DBG: Metric Input - Gold 'b': %S" (dsel-example-field train-example 'b))
+                                 (message "Bootstrap DBG: Metric Input - Pred 'b': %S" (dsel-example-field teacher-prediction 'b))
+                                 ))
+
+                            ;; Evaluate the prediction
+                            (score (funcall (dsel-optimizer-metric optimizer)
+                                            train-example
+                                            teacher-prediction)))
+
+                       ;; If prediction is good, add it as a demo
+                       (when (or (eq score t) (and (numberp score) (> score 0)))
+                         ;; Create a new demo with inputs and teacher's outputs
+                         (let* ((example-inputs (dsel-example-inputs train-example))
+                                (prediction-outputs (dsel-example-labels teacher-prediction))
+                                (new-demo-field-args-plist
+                                 (append (cl-loop for (field-symbol . value) in example-inputs
+                                                  collect (dsel-symbol-to-keyword field-symbol) collect value)
+                                         (cl-loop for (field-symbol . value) in prediction-outputs
+                                                  collect (dsel-symbol-to-keyword field-symbol) collect value)))
+                                (new-demo (apply #'dsel-make-example new-demo-field-args-plist)))
+                           (setf (dsel-example-input-keys new-demo) (mapcar #'car example-inputs))
+                           (push new-demo (dsel-predict-demos predictor))
+                           (cl-decf num-bootstrapped-needed)))))))))
+
     ;; Set compiled flag and return
     (setf (dsel-module-compiled-p optimized-student) t)
     optimized-student))

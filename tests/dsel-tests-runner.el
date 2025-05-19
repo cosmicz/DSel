@@ -36,13 +36,63 @@
 (defvar dsel-test-llm-provider nil
   "LLM provider used during tests.")
 
+(defvar dsel-test-llm-prompt-to-response-map nil
+  "An alist mapping prompt content (or key parts) to desired fake responses.
+Each element is (PROMPT-SUBSTRING . RESPONSE-STRING).
+The first match is used. Tests can `let`-bind this.")
+
 (defvar dsel-test-llm-chat-response
-  (lambda ()
-    "Chat action response.")
-  "Function to simulate LLM chat action.")
+  (lambda (prompt-struct) ; The lambda now takes the llm-chat-prompt struct
+    ;; (message "LLM-FAKE-CHAT-RESPONSE: called with prompt-struct: %S" prompt-struct)
+    (let ((current-input-interaction (car (last (llm-chat-prompt-interactions prompt-struct))))
+          (current-map (symbol-value 'dsel-test-llm-prompt-to-response-map)))
+      ;; (message "LLM-FAKE-CHAT-RESPONSE: current-input-interaction: %S, current-map: %S" current-input-interaction current-map)
+      (if current-input-interaction
+          (let ((current-input-content (llm-chat-prompt-interaction-content current-input-interaction)))
+            ;; (message "LLM-FAKE-CHAT-RESPONSE: current-input-content: %S" current-input-content)
+            (cl-loop for mapping in current-map
+                     ;; (message "LLM-FAKE-CHAT-RESPONSE: checking mapping: %S against input: %S" mapping current-input-content)
+                     when (string-match-p (regexp-quote (car mapping)) current-input-content)
+                     do
+                     ;; (message "LLM-FAKE-CHAT-RESPONSE: found match for %S, response: %S" (car mapping) (cdr mapping))
+                     (cl-return (cdr mapping)) ; Return the matched response from cl-loop
+                     finally
+                     ;; (message "LLM-FAKE-CHAT-RESPONSE: no match in map (loop finished), using default.")
+                     (cl-return "Rationale: Default Fake Rationale\nB: default_b\nY: default_y")))))) ; Default if loop finishes
+  "Function to simulate LLM chat action, potentially using dsel-test-llm-prompt-to-response-map.")
+
+;; dsel-setup-test-environment calls make-llm-fake with this lambda.
+;; The make-llm-fake needs to be adjusted to pass the prompt to chat-action-func.
+(cl-defmethod llm-chat ((provider llm-fake) prompt &optional multi-output)
+  "redefine here to use the prompt struct."
+  (when (llm-fake-output-to-buffer provider)
+    (with-current-buffer (get-buffer-create (llm-fake-output-to-buffer provider))
+      (goto-char (point-max))
+      (insert "\nCall to llm-chat\n"  (llm-chat-prompt-to-text prompt) "\n")))
+  (message "LLM-FAKE: llm chat called with prompt: %S. Chat-action-func %S" prompt (llm-fake-chat-action-func provider))
+  (let ((result
+         (if (llm-fake-chat-action-func provider)
+             (let* ((f (llm-fake-chat-action-func provider))
+                    (result (funcall f prompt)))
+               (message "LLM-FAKE: result from chat-action-func: %S" result)
+               (pcase (type-of result)
+                 ('string result)
+                 ('cons (signal (car result) (cdr result)))
+                 (_ (error "Incorrect type found in `chat-action-func': %s" (type-of result)))))
+           "Sample response from `llm-chat-async'")))
+    (setf (llm-chat-prompt-interactions prompt)
+          (append (llm-chat-prompt-interactions prompt)
+                  (list (make-llm-chat-prompt-interaction :role 'assistant :content result))))
+    (if multi-output
+        `(:text ,result)
+      result)))
 
 (defun dsel-setup-test-environment ()
   "Setup the test environment for DSel."
+  (setq max-lisp-eval-depth 1000
+        print-level 1000
+        print-length 1000
+        print-right-margin 1000)
   (setq dsel-test-llm-provider (make-llm-fake
                                 :output-to-buffer "*dsel-test-llm-fake-output-buffer*"
                                 :chat-action-func dsel-test-llm-chat-response))
@@ -53,6 +103,8 @@
 ;; Load test files
 (require 'dsel-core-tests)
 (require 'dsel-adapter-tests)
+(require 'dsel-predictors-tests)
+(require 'dsel-optimizers-tests)
 
 ;; Run tests
 
