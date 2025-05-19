@@ -95,12 +95,20 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
          ;; Format the current input as a user message
          (current-input-message
           (list :role "user"
-                :content (dsel--format-input-fields signature current-inputs-alist))))
+                :content (dsel--format-input-fields signature current-inputs-alist)))
+
+         ;; Current input for main content argument
+         (current-input-content 
+          (dsel--format-input-fields signature current-inputs-alist)))
     
-    ;; Combine into an llm-chat-prompt structure
+    ;; Create a proper llm-chat-prompt structure using expected keywords
     (llm-make-chat-prompt
-     :system system-prompt
-     :messages (append demo-messages (list current-input-message)))))
+     current-input-content
+     :context system-prompt 
+     :examples (cl-loop for demo in demos
+                        collect (cons 
+                                 (dsel--format-input-fields signature (dsel-example-inputs demo))
+                                 (dsel--format-output-fields signature (dsel-example-labels demo)))))))
 
 (defun dsel--format-input-fields (signature inputs-alist)
   "Format the INPUTS-ALIST according to the SIGNATURE's input field definitions."
@@ -114,9 +122,9 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
         (when input-pair
           (let ((value (cdr input-pair)))
             (setq result (concat result
-                                field-prefix
-                                (funcall format-fn "%s" value)
-                                "\n\n"))))))
+                                 field-prefix
+                                 (funcall format-fn "%s" value)
+                                 "\n\n"))))))
     result))
 
 (defun dsel--format-output-fields (signature outputs-alist)
@@ -131,13 +139,13 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
         (when output-pair
           (let ((value (cdr output-pair)))
             (setq result (concat result
-                                field-prefix
-                                (funcall format-fn "%s" value)
-                                "\n\n"))))))
+                                 field-prefix
+                                 (funcall format-fn "%s" value)
+                                 "\n\n"))))))
     result))
 
 (cl-defmethod dsel-adapter-parse-output ((adapter dsel-default-chat-adapter)
-                                        signature llm-response-string)
+                                         signature llm-response-string)
   "Parse LLM-RESPONSE-STRING using the default adapter and SIGNATURE."
   (let ((result nil))
     (dolist (field-pair (dsel-signature-output-fields signature))
@@ -164,9 +172,9 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
     ('number (string-to-number string-value))
     ('boolean (cond
                ((string-match-p "\\`\\(?:t\\|true\\|yes\\)\\'" 
-                               (downcase string-value)) t)
-               ((string-match-p "\\`\\(?:nil\\|false\\|no\\)\\'" 
-                               (downcase string-value)) nil)
+                                (downcase string-value)) t)
+               ((string-match-p "\\`\\(?:nil\\|false\\|no\\)\\'"
+                                (downcase string-value)) nil)
                (t nil)))
     (_ string-value)))  ; Default to string for unknown types
 

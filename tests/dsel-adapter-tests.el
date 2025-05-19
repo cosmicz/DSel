@@ -28,45 +28,41 @@
                :output-fields '((sentiment . (:type string :desc "The sentiment: positive, negative, or neutral")))))
          (adapter (make-dsel-default-chat-adapter))
          (demos (list
-                (dsel-example-with-inputs
-                 (dsel-make-example
-                  :text "I love this product!"
-                  :sentiment "positive")
-                 'text)
-                (dsel-example-with-inputs
-                 (dsel-make-example
-                  :text "I hate this product!"
-                  :sentiment "negative")
-                 'text)))
+                 (dsel-example-with-inputs
+                  (dsel-make-example
+                   :text "I love this product!"
+                   :sentiment "positive")
+                  'text)
+                 (dsel-example-with-inputs
+                  (dsel-make-example
+                   :text "I hate this product!"
+                   :sentiment "negative")
+                  'text)))
          (inputs '((text . "This product is okay.")))
          (prompt (dsel-adapter-format-prompt adapter sig demos inputs)))
     
     ;; Test prompt structure
-    (should (eq (plist-get prompt :type) 'llm-chat))
-    (should (stringp (plist-get prompt :system)))
-    (should (listp (plist-get prompt :messages)))
-    
-    ;; Test system message contains instructions
-    (let ((system (plist-get prompt :system)))
-      (should (string-match-p (regexp-quote instructions) system)))
-    
-    ;; Test messages structure
-    (let ((messages (plist-get prompt :messages)))
-      ;; Should have 5 messages (2 demos x 2 messages each + 1 user input)
-      (should (= (length messages) 5))
-      ;; User messages
-      (should (string-match-p "I love this product" 
-                             (plist-get (nth 0 messages) :content)))
-      (should (string-match-p "I hate this product" 
-                             (plist-get (nth 2 messages) :content)))
-      ;; Assistant messages
-      (should (string-match-p "positive" 
-                             (plist-get (nth 1 messages) :content)))
-      (should (string-match-p "negative" 
-                             (plist-get (nth 3 messages) :content)))
-      ;; Current input
-      (should (string-match-p "This product is okay" 
-                             (plist-get (nth 4 messages) :content))))))
+    (should (llm-chat-prompt-p prompt))
+    (should (stringp (llm-chat-prompt-context prompt)))
+    (let ((system-message-content (llm-chat-prompt-context prompt)))
+      (should (string-match-p (regexp-quote instructions) system-message-content))
+      (should (string-match-p "Your input fields are:" system-message-content))
+      (should (string-match-p "Your output fields are:" system-message-content)))
+
+    (should (listp (llm-chat-prompt-examples prompt)))
+    (should (= (length (llm-chat-prompt-examples prompt)) 2))
+
+    ;; Test the :interactions slot (which initially holds the current user input)
+    ;; Note: llm-provider-utils-combine-to-system-prompt (called later by actual providers)
+    ;; will merge :context and :examples into this :interactions list.
+    ;; What llm-make-chat-prompt does is put the `content` argument into :interactions.
+    (should (listp (llm-chat-prompt-interactions prompt)))
+    (let ((initial-interactions (llm-chat-prompt-interactions prompt)))
+      (should (= (length initial-interactions) 1)) ; Only the current input initially
+      (let ((current-user-interaction (car initial-interactions)))
+        (should (eq (llm-chat-prompt-interaction-role current-user-interaction) 'user))
+        (should (string-match-p "This product is okay"
+                                (llm-chat-prompt-interaction-content current-user-interaction)))))))
 
 (ert-deftest dsel-test-adapter-parse-output ()
   "Test output parsing with dsel-adapter."
@@ -75,7 +71,7 @@
                :name 'sentiment-classifier
                :input-fields '((text . (:type string :desc "The text to classify")))
                :output-fields '((sentiment . (:type string :desc "The sentiment: positive, negative, or neutral"))
-                               (confidence . (:type number :desc "Confidence score from 0 to 1")))))
+                                (confidence . (:type number :desc "Confidence score from 0 to 1")))))
          (adapter (make-dsel-default-chat-adapter))
          (response "Sentiment: positive\nConfidence: 0.95")
          (result (dsel-adapter-parse-output adapter sig response)))

@@ -88,12 +88,14 @@ Each field-plist may include:
 (defun dsel-make-example (&rest plist)
   "Create a new example from field-value pairs in PLIST.
 Return a `dsel-example' with fields from PLIST and empty input-keys."
-  (let ((fields nil))
-    (while plist
-      (let ((key (pop plist))
-            (value (pop plist)))
-        (when (and key value)
-          (push (cons key value) fields))))
+  (let ((fields nil)
+        (plist-copy (copy-sequence plist)))
+    (while plist-copy
+      (let ((key (pop plist-copy))
+            (value (pop plist-copy)))
+        (when key  ; Always include the field even if value is nil
+          ;; Convert :keyword to 'keyword
+          (push (cons (intern (substring (symbol-name key) 1)) value) fields))))
     (make-dsel-example :fields (nreverse fields))))
 
 (defun dsel-example-with-inputs (example &rest input-keys)
@@ -150,24 +152,21 @@ PLIST includes field-value pairs and may include:
 - :completions List of alists for multiple generations
 - :lm-provider The provider instance used
 - :raw-response The raw string from the LLM"
-  (let ((fields nil)
-        (completions nil)
-        (lm-provider nil)
-        (raw-response nil))
-    (let ((plist-copy (copy-sequence plist)))
-      (setq completions (plist-get plist-copy :completions))
-      (setq lm-provider (plist-get plist-copy :lm-provider))
-      (setq raw-response (plist-get plist-copy :raw-response))
-      (setq plist-copy (plist-put (plist-put (plist-put plist-copy :completions nil)
-                                             :lm-provider nil)
-                                  :raw-response nil))
-      
-      ;; Create fields from remaining plist
-      (while plist-copy
-        (let ((key (pop plist-copy))
-              (value (pop plist-copy)))
-          (when (and key value)
-            (push (cons key value) fields)))))
+  (let* ((completions (plist-get plist :completions))
+         (lm-provider (plist-get plist :lm-provider))
+         (raw-response (plist-get plist :raw-response))
+         (fields nil)
+         (plist-copy (copy-sequence plist)))
+    
+    ;; Process regular fields from plist
+    (while plist-copy
+      (let ((key (pop plist-copy))
+            (value (pop plist-copy)))
+        ;; Skip special properties and include all other fields
+        (when (and key 
+                   (not (memq key '(:lm-provider :raw-response :completions))))
+          ;; Convert :keyword to 'keyword for field names
+          (push (cons (intern (substring (symbol-name key) 1)) value) fields))))
     
     (make-dsel-prediction :fields (nreverse fields)
                           :completions completions
