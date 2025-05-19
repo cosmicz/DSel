@@ -89,6 +89,50 @@ If :name is not in PLIST, NAME is used as the predictor's internal name."
           (append (list :name (list 'quote name)) plist)))
      ,(format "DSel predictor %s using signature %s." name signature-var)))
 
+;; In dsel-macros.el
+(defmacro dsel-defexamples (var-name input-keys-form &rest example-definitions-plists)
+  "Define a list of `dsel-example`s and assign to VAR-NAME.
+Each example in EXAMPLE-DEFINITIONS-PLISTS is a plist of field-value pairs.
+All created examples will have input keys from the evaluated INPUT-KEYS-FORM set.
+INPUT-KEYS-FORM should evaluate to a list of symbols, e.g., '(key1 key2) or just 'key1."
+  (declare (indent 2))
+  (let ((docstring (format "A list of dsel-examples for %s with input keys derived from %s."
+                           var-name input-keys-form)))
+    `(defvar ,var-name
+       (dsel-create-examples
+        ;; List of plists for each example definition
+        ',(mapcar (lambda (def-plist) def-plist) example-definitions-plists)
+        ;; Keyword argument for input-keys
+        :input-keys ,input-keys-form)
+       ,docstring)))
+
+;; ;;Usage:
+;; (dsel-defexamples my-examples '(a) ; input-keys-form evaluates to ('a)
+;;                   (:a "one" :b "1")
+;;                   (:a "two" :b "2"))
+
+;; (dsel-defexamples another-set '(text question)
+;;                   (:text "ctx1" :question "q1" :answer "a1")
+;;                   (:text "ctx2" :question "q2" :answer "a2"))
+
+;; (let ((keys '(input1)))
+;;   (dsel-defexamples dynamic-examples keys
+;;                     (:input1 "val1" :output1 "res1")))
+
+;; ;; Example usage for dsel-defexamples:
+;; (dsel-defexamples example-set-1 '(a) ; Input keys list
+;;                   (:a "one" :b "1")
+;;                   (:a "two" :b "2"))
+
+;; (dsel-defexamples example-set-2 '(text question) ; Multiple input keys
+;;                   (:text "context" :question "q1" :answer "ans1")
+;;                   (:text "context2" :question "q2" :answer "ans2"))
+
+;; (let ((common-inputs '(a)))
+;;   (dsel-defexamples example-set-3 common-inputs ; Using a variable for input keys
+;;                     (:a "one" :b "1")
+;;                     (:a "two" :b "2")))
+
 (defmacro dsel-defchain-of-thought (name original-signature &rest plist)
   "Define a DSel chain-of-thought module named NAME using ORIGINAL-SIGNATURE and PLIST.
 The chain-of-thought module is stored in the variable NAME.

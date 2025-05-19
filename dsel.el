@@ -30,9 +30,10 @@
 (require 'dsel-types)     ; Core data structures
 (require 'dsel-settings)  ; Configuration and settings
 (require 'dsel-adapter)   ; Adapter between DSel and llm.el
-(require 'dsel-module)    ; Module base for building LLM applications
 (require 'dsel-predictors) ; Predictor modules for LLM interactions
+(require 'dsel-module)    ; Module base for building LLM applications
 (require 'dsel-optimizers) ; Optimizers for improving LLM performance
+(require 'dsel-macros)    ; Definition macros for improved ergonomics
 
 (provide 'dsel)
 ;;; dsel.el ends here

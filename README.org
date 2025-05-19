@@ -71,18 +71,10 @@ A predictor is a module that uses an LLM to generate predictions based on a sign
 Add examples to improve performance:
 
 #+begin_src emacs-lisp
-(setq examples
-      (list
-       (dsel-example-with-inputs
-        (dsel-make-example
-         :text "I love this product!"
-         :sentiment "positive")
-        'text)
-       (dsel-example-with-inputs
-        (dsel-make-example
-         :text "I hate this product!"
-         :sentiment "negative")
-        'text)))
+(dsel-defexamples sentiment-examples '(text)
+                  (:text "This product is great!" :sentiment "positive")
+                  (:text "I hate this product." :sentiment "negative")
+                  (:text "It's okay, not the best." :sentiment "neutral"))
 
 (setf (dsel-predict-demos sentiment-predictor) examples)
 #+end_src
