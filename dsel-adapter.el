@@ -84,19 +84,6 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
             (dsel-signature-output-fields signature)
             "\n")))
          
-         ;; Create messages for each demo example
-         (demo-messages
-          (cl-loop for demo in demos
-                   collect (list :role "user"
-                                 :content (dsel--format-input-fields signature (dsel-example-inputs demo)))
-                   collect (list :role "assistant"
-                                 :content (dsel--format-output-fields signature (dsel-example-labels demo)))))
-         
-         ;; Format the current input as a user message
-         (current-input-message
-          (list :role "user"
-                :content (dsel--format-input-fields signature current-inputs-alist)))
-
          ;; Current input for main content argument
          (current-input-content 
           (dsel--format-input-fields signature current-inputs-alist)))
