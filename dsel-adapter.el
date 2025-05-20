@@ -87,7 +87,7 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
          ;; Current input for main content argument
          (current-input-content 
           (dsel--format-input-fields signature current-inputs-alist)))
-    
+
     ;; Create a proper llm-chat-prompt structure using expected keywords
     (llm-make-chat-prompt
      current-input-content
