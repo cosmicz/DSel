@@ -17,23 +17,21 @@
   (let* ((sig (dsel-make-signature
                "Echo the input value"
                :name 'test-signature
-               :input-fields (list '(:name foo :type string :desc ""))
-               :output-fields (list '(:name bar :type string :desc ""))))
+               :input-fields (list '(:name foo :type string :desc "Input foo"))
+               :output-fields (list '(:name bar :type string :desc "Output bar" :prefix "Bar: ")))) ; Ensure prefix for parsing
          (predictor (dsel-make-predict sig :lm dsel-test-llm-provider))
-         (expected-raw-response "Rationale: Default Fake Rationale\n\nB: default_b\n\nY: default_y")
+         ;; Set up the expected response for this specific test case via the map
+         (dsel-test-llm-prompt-to-response-map `(("Foo: hello" . "Bar: world")))
+         (expected-raw-response "Bar: world") ; The exact response we expect
          (prediction (dsel-forward predictor :foo "hello")))
-
-    ;; (message "DEBUG: Prediction object in test: %S" prediction)
-    ;; (message "DEBUG: Prediction fields: %S" (dsel-example-fields prediction))
-    ;; (message "DEBUG: Value for 'foo': %S" (dsel-example-field prediction 'foo))
-
 
     (should (dsel-prediction-p prediction))
     (should (equal (dsel-prediction-lm-provider prediction)
                    dsel-test-llm-provider))
     (should (equal (dsel-prediction-raw-response prediction)
                    expected-raw-response))
-    (should (equal (dsel-example-field prediction 'foo) "hello"))))
+    (should (equal (dsel-get-field prediction 'foo) "hello"))
+    (should (equal (dsel-get-field prediction 'bar) "world"))))
 
 ;; Test chain-of-thought forward
 (ert-deftest dsel-test-chain-of-thought-basic ()
@@ -41,52 +39,48 @@
   (let* ((sig (dsel-make-signature
                "Test COT"
                :name 'test-cot
-               :input-fields (list '(:name x :type string :desc ""))
-               :output-fields (list '(:name y :type string :desc ""))))
-         (cot (dsel-make-chain-of-thought sig :lm dsel-test-llm-provider))
-         (expected-raw-response "Rationale: Default Fake Rationale\n\nB: default_b\n\nY: default_y")
+               :input-fields (list '(:name x :type string :desc "Input X"))
+               :output-fields (list '(:name y :type string :desc "Output Y" :prefix "Y: "))))
+         (cot (dsel-make-chain-of-thought sig :lm dsel-test-llm-provider
+                                          :rationale-field-prefix "Rationale: "))
+         ;; Define the expected response for this specific test case via the map
+         (dsel-test-llm-prompt-to-response-map
+          `((,(concat "X: value" "\n\n") . ; Input prompt key - dsel--format-input-fields adds \n\n
+             "Rationale: Custom rationale for COT test.\n\nY: custom_y_value\n\n")))
+         (expected-raw-response "Rationale: Custom rationale for COT test.\n\nY: custom_y_value\n\n")
          (prediction (dsel-forward cot :x "value")))
+
     (should (dsel-prediction-p prediction))
     (should (equal (dsel-prediction-lm-provider prediction)
                    dsel-test-llm-provider))
     (should (equal (dsel-prediction-raw-response prediction)
                    expected-raw-response))
-    (should (string= (dsel-example-field prediction 'rationale) "Default Fake Rationale"))
-    (should (string= (dsel-example-field prediction 'y) "default_y"))
-    ))
+    (should (string= (dsel-get-field prediction 'rationale) "Custom rationale for COT test."))
+    (should (string= (dsel-get-field prediction 'y) "custom_y_value"))))
 
-;; Test chain-of-thought with demos
+;; Test chain-of-thought with demos (already fine as it doesn't rely on default response for assertions)
 (ert-deftest dsel-test-chain-of-thought-demos ()
   "Test that demos are properly passed to the chain-of-thought predictor."
   (let* ((sig (dsel-make-signature
                "Test COT with Demos"
                :name 'test-cot-demos
-               :input-fields (list '(:name input :type string :desc ""))
-               :output-fields (list '(:name output :type string :desc ""))))
-         ;; Create some example demos
+               :input-fields (list '(:name input :type string :desc "Input Description")) ; Added desc
+               :output-fields (list '(:name output :type string :desc "Output Description")))) ; Added desc
          (demo1 (dsel-make-example :input "sample1" :output "result1"))
          (demo2 (dsel-make-example :input "sample2" :output "result2"))
          (demos (list demo1 demo2))
-         ;; Create chain-of-thought with demos
-         (cot (dsel-make-chain-of-thought sig 
-                                         :lm dsel-test-llm-provider
-                                         :demos demos))
-         ;; Get the underlying predictor to verify demos were passed
+         (cot (dsel-make-chain-of-thought sig
+                                          :lm dsel-test-llm-provider
+                                          :demos demos))
          (predictor (dsel-chain-of-thought-predictor cot)))
-    
-    ;; Verify demos were correctly passed to the predictor
     (should (= (length (dsel-predict-demos predictor)) 2))
     (should (equal (dsel-predict-demos predictor) demos))
-    
-    ;; Verify first demo fields
     (let ((first-demo (car (dsel-predict-demos predictor))))
-      (should (string= (dsel-example-field first-demo 'input) "sample1"))
-      (should (string= (dsel-example-field first-demo 'output) "result1")))
-    
-    ;; Verify second demo fields
+      (should (string= (dsel-get-field first-demo 'input) "sample1"))
+      (should (string= (dsel-get-field first-demo 'output) "result1")))
     (let ((second-demo (cadr (dsel-predict-demos predictor))))
-      (should (string= (dsel-example-field second-demo 'input) "sample2"))
-      (should (string= (dsel-example-field second-demo 'output) "result2")))))
+      (should (string= (dsel-get-field second-demo 'input) "sample2"))
+      (should (string= (dsel-get-field second-demo 'output) "result2")))))
 
 (provide 'dsel-predictors-tests)
-;;; dsel-predictors-tests.el ends here
+;;; dsel-predictors-tests.el ends heree

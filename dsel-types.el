@@ -30,87 +30,73 @@ Following JSON Schema conventions, fields are defined as plists with :name, :typ
   "Create a new signature with INSTRUCTIONS and properties from PLIST.
 PLIST may include:
 - :name A symbol for the signature name
-- :input-fields List of field plists
-- :output-fields List of field plists
+- :input-fields List of field plists or alist of (name . plist) pairs
+- :output-fields List of field plists or alist of (name . plist) pairs
 
-Each field plist must include:
-- :name Symbol identifying the field (required)
+Each field definition (plist or plist part of pair) must include:
+- :name Symbol identifying the field (required if not key in alist)
 - :type Expected type (e.g., 'string, 'integer, 'boolean, 'array, 'object) (required)
-- :desc Natural language description of the field (required)
 
 And may optionally include:
+- :desc Natural language description of the field (default to empty string)
 - :prefix String to prepend when formatting (defaults to capitalized :name)
 - :format-fn Function to convert value to string (optional)
 - :optional Boolean indicating if the field is optional (default is nil)
-- :enum Vector of allowed values for string fields (optional)
-- :items Property list describing array item type (required for 'array type)
-- :properties List of property field plists (required for 'object type)
+- :enum Vector of allowed values (optional)
+- :items Property list describing array item type (required for 'array type, must include :type)
+- :properties List of property field plists/alists (required for 'object type)
 - :required List of required property name symbols (for 'object type)"
   (let* ((name (plist-get plist :name))
-         (input-fields (plist-get plist :input-fields))
-         (output-fields (plist-get plist :output-fields))
-         (process-fields
-          (lambda (fields-list)
-            (mapcar (lambda (field-plist)
-                      (let* ((field-name (plist-get field-plist :name))
-                             (field-type (plist-get field-plist :type))
-                             (field-desc (plist-get field-plist :desc))
-                             (prefix (plist-get field-plist :prefix)))
-                        
-                        ;; Validate required properties
-                        (unless field-name
-                          (error "Field must have a :name"))
-                        (unless (symbolp field-name)
-                          (error "Field :name must be a symbol: %s" field-name))
-                        (unless field-desc
-                          (error "Field '%s' must have a :desc" field-name))
-                        (unless field-type
-                          (error "Field '%s' must have a :type" field-name))
-                        
-                        ;; Validate type-specific required properties
-                        (when (eq field-type 'array)
-                          (unless (plist-get field-plist :items)
-                            (error "Array field '%s' must have :items" field-name)))
-                        
-                        (when (eq field-type 'object)
-                          (unless (plist-get field-plist :properties)
-                            (error "Object field '%s' must have :properties" field-name)))
-                        
-                        ;; Generate default prefix if needed
-                        (unless prefix
-                          ;; Simple and predictable prefix generation
-                          (setq prefix 
-                                (concat (capitalize (symbol-name field-name)) ": "))
-                          ;; Convert kebab-case, snake_case, camelCase to simple capitalized format
-                          (setq field-plist (plist-put field-plist :prefix prefix)))
-                        
-                        ;; If object, process property fields recursively
-                        (when (eq field-type 'object)
-                          (let ((properties (plist-get field-plist :properties)))
-                            (when properties
-                              (setq field-plist 
-                                    (plist-put field-plist :properties 
-                                               (funcall #'dsel-convert-alist-to-field-plists properties))))))
+         (input-fields-arg (plist-get plist :input-fields))
+         (output-fields-arg (plist-get plist :output-fields)))
 
-                        field-plist))
-                    fields-list))))
-    
-    ;; Basic validation
-    (unless (stringp instructions)
-      (error "Instructions must be a string"))
-    
-    ;; Convert alist-style fields to plist-style for backward compatibility
-    (setq input-fields (dsel-convert-alist-to-field-plists input-fields))
-    (setq output-fields (dsel-convert-alist-to-field-plists output-fields))
-    
-    ;; Process fields with validation and default prefixes
-    (setq input-fields (funcall process-fields input-fields))
-    (setq output-fields (funcall process-fields output-fields))
-    
-    (make-dsel-signature :name name
-                         :instructions instructions
-                         :input-fields input-fields
-                         :output-fields output-fields)))
+    (unless (stringp instructions) (error "Instructions must be a string"))
+
+    (cl-labels ((process-one-field (field-plist)
+                  (let* ((field-name (plist-get field-plist :name))
+                         (field-type (plist-get field-plist :type))
+                         ;; :desc is now optional, defaults to "" if not provided
+                         (field-desc (or (plist-get field-plist :desc) ""))
+                         (prefix (plist-get field-plist :prefix))
+                         (processed-plist (copy-tree field-plist)))
+
+                    (unless field-name (error "Field definition missing :name: %s" field-plist))
+                    (unless (symbolp field-name) (error "Field :name must be a symbol: %s" field-name))
+                    ;; (unless field-desc (error "Field '%s' must have a :desc" field-name)) ; Removed this check
+                    (unless field-type (error "Field '%s' must have a :type" field-name))
+
+                    ;; Ensure :desc is in the plist, even if it's the default ""
+                    (setq processed-plist (plist-put processed-plist :desc field-desc))
+
+                    (cond
+                     ((eq field-type 'array)
+                      (let* ((items-plist (plist-get processed-plist :items)))
+                        (unless items-plist (error "Array field '%s' must have :items" field-name))
+                        (unless (plist-get items-plist :type) (error "Array field '%s' :items must specify :type" field-name))
+                        (when (eq (plist-get items-plist :type) 'object)
+                          (let ((item-props (plist-get items-plist :properties)))
+                            (unless item-props (error "Array field '%s' :items of type object must have :properties" field-name))
+                            (setq processed-plist
+                                  (plist-put processed-plist :items
+                                             (plist-put items-plist :properties (process-field-list item-props))))))))
+                     ((eq field-type 'object)
+                      (let ((properties (plist-get processed-plist :properties)))
+                        (unless properties (error "Object field '%s' must have :properties" field-name))
+                        (setq processed-plist (plist-put processed-plist :properties (process-field-list properties))))))
+
+                    (unless prefix
+                      (setq prefix (concat (capitalize (symbol-name field-name)) ": "))
+                      (setq processed-plist (plist-put processed-plist :prefix prefix)))
+
+                    processed-plist))
+
+                (process-field-list (fields-list-or-alist)
+                  (mapcar #'process-one-field (dsel-convert-alist-to-field-plists fields-list-or-alist))))
+
+      (make-dsel-signature :name name
+                           :instructions instructions
+                           :input-fields (process-field-list input-fields-arg)
+                           :output-fields (process-field-list output-fields-arg)))))
 
 ;;; Field conversion and access helpers
 

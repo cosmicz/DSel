@@ -26,11 +26,11 @@
                "Test array of objects"
                :input-fields (list '(:name simple-data :type string :desc "Simple text input"))
                :output-fields (list '(:name users 
-                                     :type array
-                                     :desc "List of user objects"
-                                     :items (:type object
-                                             :properties ((:name name :type string :desc "User name")
-                                                         (:name age :type integer :desc "User age"))))))))
+                                            :type array
+                                            :desc "List of user objects"
+                                            :items (:type object
+                                                          :properties ((:name name :type string :desc "User name")
+                                                                       (:name age :type integer :desc "User age"))))))))
     (let ((users-field (dsel-signature-get-output-field sig 'users)))
       (should (eq 'array (plist-get users-field :type)))
       (let ((items (plist-get users-field :items)))
@@ -53,9 +53,9 @@
    (dsel-make-signature
     "Test array items validation"
     :input-fields (list '(:name data 
-                          :type array 
-                          :desc "Data array"
-                          :items ())))
+                                :type array
+                                :desc "Data array"
+                                :items ())))
    :type 'error))
 
 (ert-deftest dsel-test-nested-arrays ()
@@ -64,11 +64,11 @@
                "Test nested arrays"
                :output-fields 
                (list '(:name matrix
-                      :type array
-                      :desc "3D matrix of numbers"
-                      :items (:type array
-                              :items (:type array
-                                      :items (:type number))))))))
+                             :type array
+                             :desc "3D matrix of numbers"
+                             :items (:type array
+                                           :items (:type array
+                                                         :items (:type number))))))))
     (let* ((matrix-field (dsel-signature-get-output-field sig 'matrix))
            (level1-items (plist-get matrix-field :items))
            (level2-items (plist-get level1-items :items))
@@ -86,26 +86,26 @@
                "Test nested objects"
                :output-fields
                (list '(:name user
-                      :type object
-                      :desc "User record"
-                      :properties ((:name name :type string :desc "Full name")
-                                  (:name contact 
-                                   :type object
-                                   :desc "Contact information"
-                                   :properties ((:name email :type string :desc "Email address")
-                                               (:name phone :type string :desc "Phone number")
-                                               (:name address 
-                                                :type object
-                                                :desc "Physical address"
-                                                :properties ((:name street :type string :desc "Street")
-                                                            (:name city :type string :desc "City")
-                                                            (:name country :type string :desc "Country")))))
-                                  (:name stats
-                                   :type object
-                                   :desc "User statistics"
-                                   :properties ((:name joined :type string :desc "Join date")
-                                               (:name last-login :type string :desc "Last login date"))))
-                      :required (name))))))
+                             :type object
+                             :desc "User record"
+                             :properties ((:name name :type string :desc "Full name")
+                                          (:name contact
+                                                 :type object
+                                                 :desc "Contact information"
+                                                 :properties ((:name email :type string :desc "Email address")
+                                                              (:name phone :type string :desc "Phone number")
+                                                              (:name address
+                                                                     :type object
+                                                                     :desc "Physical address"
+                                                                     :properties ((:name street :type string :desc "Street")
+                                                                                  (:name city :type string :desc "City")
+                                                                                  (:name country :type string :desc "Country")))))
+                                          (:name stats
+                                                 :type object
+                                                 :desc "User statistics"
+                                                 :properties ((:name joined :type string :desc "Join date")
+                                                              (:name last-login :type string :desc "Last login date"))))
+                             :required (name))))))
     (let* ((user-field (dsel-signature-get-output-field sig 'user))
            (properties (plist-get user-field :properties))
            (contact-field (dsel-get-field-by-name properties 'contact))
@@ -133,17 +133,31 @@
   (should-error
    (dsel-make-signature
     "Test object validation"
-    :input-fields (list '(:name user :type object :desc "User data without properties")))
+    :input-fields (list '(:name user :type object :desc "User data with no props"))) ; desc for parent
    :type 'error)
 
-  ;; Properties should allow missing :desc (we're not validating this currently)
-  (dsel-make-signature
-   "Test object properties validation"
-   :input-fields (list '(:name user 
-                         :type object 
-                         :desc "User data"
-                         :properties ((:name name 
-                                      :type string))))))
+  ;; Properties can now omit :desc (it defaults to "")
+  (let ((sig (dsel-make-signature
+              "Test object properties validation with optional desc"
+              :input-fields (list '(:name user
+                                          :type object
+                                          :desc "User data"
+                                          :properties ((:name name :type string) ; :desc omitted for property 'name'
+                                                       (:name age :type integer :desc "User age")))))))
+    (let* ((user-field (dsel-signature-get-input-field sig 'user))
+           (props (plist-get user-field :properties))
+           (name-prop (dsel-get-field-by-name props 'name)))
+      (should (string= (plist-get name-prop :desc) "")))) ; Verify desc defaults to ""
+
+  ;; Test that a property missing :type still errors
+  (should-error
+   (dsel-make-signature
+    "Test object property missing type"
+    :input-fields (list '(:name user
+                                :type object
+                                :desc "User data with property missing type"
+                                :properties ((:name email :desc "User email")))))
+   :type 'error))
 
 ;;; Tests for Enum Field Types
 
@@ -152,10 +166,10 @@
   (let* ((sig (dsel-make-signature
                "Test enum with defaults"
                :input-fields (list '(:name status 
-                                    :type string
-                                    :desc "Current status"
-                                    :enum ["active" "inactive" "pending"]
-                                    :optional t)))))
+                                           :type string
+                                           :desc "Current status"
+                                           :enum ["active" "inactive" "pending"]
+                                           :optional t)))))
     (let ((status-field (dsel-signature-get-input-field sig 'status)))
       (should (eq 'string (plist-get status-field :type)))
       (should (plist-get status-field :optional))
@@ -166,9 +180,9 @@
   (let* ((sig (dsel-make-signature
                "Test numeric enums"
                :input-fields (list '(:name priority-level
-                                    :type integer
-                                    :desc "Priority level"
-                                    :enum [1 2 3 4 5])))))
+                                           :type integer
+                                           :desc "Priority level"
+                                           :enum [1 2 3 4 5])))))
     (let ((priority-field (dsel-signature-get-input-field sig 'priority-level)))
       (should (eq 'integer (plist-get priority-field :type)))
       (should (equal [1 2 3 4 5] (plist-get priority-field :enum))))))
@@ -252,10 +266,10 @@
   (let* ((sig (dsel-make-signature
                "Test field formatting"
                :input-fields (list '(:name simple-name :type string :desc "Simple kebab case")
-                                  '(:name snake_case_name :type string :desc "Snake case name")
-                                  '(:name camelCaseName :type string :desc "Camel case name")
-                                  '(:name PascalCaseName :type string :desc "Pascal case name")
-                                  '(:name UPPERCASE_NAME :type string :desc "Uppercase name")))))
+                                   '(:name snake_case_name :type string :desc "Snake case name")
+                                   '(:name camelCaseName :type string :desc "Camel case name")
+                                   '(:name PascalCaseName :type string :desc "Pascal case name")
+                                   '(:name UPPERCASE_NAME :type string :desc "Uppercase name")))))
     ;; Check all field prefixes are capitalized properly
     (let ((fields (dsel-signature-input-fields sig)))
       (let ((simple-field (dsel-get-field-by-name fields 'simple-name)))
@@ -298,7 +312,7 @@
   "Test complex type coercion."
   ;; Array coercion from JSON string - test with equal now
   (should (equal '("red" "green" "blue") 
-                (mapcar #'identity (dsel--coerce-value "[\"red\", \"green\", \"blue\"]" '(:type array)))))
+                 (mapcar #'identity (dsel--coerce-value "[\"red\", \"green\", \"blue\"]" '(:type array)))))
 
   ;; Object coercion from JSON string
   (should (equal '((name . "John") (age . 30))

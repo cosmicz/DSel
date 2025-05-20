@@ -26,13 +26,13 @@
                :input-fields
                (list
                 '(:name inField
-                  :type string
-                  :desc "Input field"))
+                        :type string
+                        :desc "Input field"))
                :output-fields
                (list
                 '(:name outField
-                  :type string
-                  :desc "Output field")))))
+                        :type string
+                        :desc "Output field")))))
     (should (dsel-signature-p sig))
     (should (eq 'test-sig (dsel-signature-name sig)))
     (should (string= instructions (dsel-signature-instructions sig)))
@@ -48,9 +48,9 @@
                :input-fields
                (list
                 '(:name color-choice
-                  :type string
-                  :desc "Choose a color"
-                  :enum ["red" "green" "blue"])))))
+                        :type string
+                        :desc "Choose a color"
+                        :enum ["red" "green" "blue"])))))
     (let ((field (dsel-signature-get-input-field sig 'color-choice)))
       (should (equal ["red" "green" "blue"] (plist-get field :enum))))))
 
@@ -61,12 +61,12 @@
                :input-fields
                (list
                 '(:name item-name
-                  :type string
-                  :desc "Name")
+                        :type string
+                        :desc "Name")
                 '(:name item-details
-                  :type string
-                  :desc "Details"
-                  :optional t)))))
+                        :type string
+                        :desc "Details"
+                        :optional t)))))
     (let ((details-field (dsel-signature-get-input-field sig 'item-details)))
       (should (plist-get details-field :optional)))))
 
@@ -77,9 +77,9 @@
                :output-fields
                (list
                 '(:name tags
-                  :type array
-                  :desc "A list of tags"
-                  :items (:type string))))))
+                        :type array
+                        :desc "A list of tags"
+                        :items (:type string))))))
     (let ((tags-field (dsel-signature-get-output-field sig 'tags)))
       (should (eq 'array (plist-get tags-field :type)))
       (should (equal '(:type string) (plist-get tags-field :items))))))
@@ -91,16 +91,16 @@
                :output-fields
                (list
                 '(:name user
-                  :type object
-                  :desc "User object"
-                  :properties ((:name name
-                                :type string
-                                :desc "User's name")
-                               (:name age
-                                :type integer
-                                :desc "User's age"
-                                :optional t))
-                  :required (name))))))
+                        :type object
+                        :desc "User object"
+                        :properties ((:name name
+                                            :type string
+                                            :desc "User's name")
+                                     (:name age
+                                            :type integer
+                                            :desc "User's age"
+                                            :optional t))
+                        :required (name))))))
     (let ((user-field (dsel-signature-get-output-field sig 'user)))
       (should (eq 'object (plist-get user-field :type)))
       (let ((props (plist-get user-field :properties)))
@@ -114,9 +114,10 @@
       (should (equal '(name) (plist-get user-field :required))))))
 
 (ert-deftest dsel-test-signature-missing-required-plist-keys ()
-  "Test that `dsel-make-signature` errors if :desc or :type are missing."
-  (should-error (dsel-make-signature "Test" :input-fields (list '(:name no-desc :type string)))
-                :type 'error)
+  "Test that `dsel-make-signature` errors if :type are missing (:desc is optional)."
+  (let ((sig (dsel-make-signature "Test with no desc" :input-fields (list '(:name no-desc :type string)))))
+    (should (string= (plist-get (dsel-signature-get-input-field sig 'no-desc) :desc) "")))
+
   (should-error (dsel-make-signature "Test" :input-fields (list '(:name no-type :desc "test")))
                 :type 'error))
 
@@ -141,10 +142,10 @@
   (let* ((sig (dsel-make-signature
                "Matrix representation."
                :input-fields (list '(:name matrix 
-                                     :type array
-                                     :desc "A matrix of numbers"
-                                     :items (:type array
-                                             :items (:type number)))))))
+                                           :type array
+                                           :desc "A matrix of numbers"
+                                           :items (:type array
+                                                         :items (:type number)))))))
     (let* ((matrix-field (dsel-signature-get-input-field sig 'matrix))
            (items-plist (plist-get matrix-field :items)))
       (should (eq 'array (plist-get matrix-field :type)))
@@ -157,21 +158,21 @@
                "Product information."
                :output-fields
                (list '(:name product 
-                       :type object 
-                       :desc "Product details"
-                       :properties ((:name name :type string :desc "Product name")
-                                    (:name price :type number :desc "Product price")
-                                    (:name categories
-                                     :type array 
-                                     :desc "Product categories"
-                                     :items (:type string))
-                                    (:name metadata
-                                     :type object
-                                     :desc "Additional metadata"
-                                     :properties ((:name created-at :type string :desc "Creation date")
-                                                 (:name updated-at :type string :desc "Last update date"))
-                                     :required (created-at)))
-                       :required (name price))))))
+                             :type object
+                             :desc "Product details"
+                             :properties ((:name name :type string :desc "Product name")
+                                          (:name price :type number :desc "Product price")
+                                          (:name categories
+                                                 :type array
+                                                 :desc "Product categories"
+                                                 :items (:type string))
+                                          (:name metadata
+                                                 :type object
+                                                 :desc "Additional metadata"
+                                                 :properties ((:name created-at :type string :desc "Creation date")
+                                                              (:name updated-at :type string :desc "Last update date"))
+                                                 :required (created-at)))
+                             :required (name price))))))
     (let* ((product-field (dsel-signature-get-output-field sig 'product))
            (props (plist-get product-field :properties))
            (categories-field (dsel-get-field-by-name props 'categories))

@@ -26,14 +26,14 @@
                :input-fields
                (list
                 '(:name text
-                  :type string
-                  :desc "The input text"))
+                        :type string
+                        :desc "The input text"))
                :output-fields
                (list
                 '(:name sentiment
-                  :type string
-                  :desc "The sentiment: positive, negative, or neutral")))))
-    
+                        :type string
+                        :desc "The sentiment: positive, negative, or neutral")))))
+
     ;; Test structure
     (should (dsel-signature-p sig))
     (should (listp (dsel-signature-input-fields sig)))
@@ -79,26 +79,26 @@
                :input-fields
                (list
                 '(:name query
-                  :type string
-                  :desc "Search query"))
+                        :type string
+                        :desc "Search query"))
                :output-fields
                (list
                 '(:name results
-                  :type array
-                  :desc "Search results"
-                  :items (:type object
-                          :properties
-                          ((:name title
-                            :type string
-                            :desc "Result title")
-                           (:name url
-                            :type string
-                            :desc "Result URL")
-                           (:name tags
-                            :type array
-                            :desc "Result tags"
-                            :items (:type string)))))))))
-    
+                        :type array
+                        :desc "Search results"
+                        :items (:type object
+                                      :properties
+                                      ((:name title
+                                              :type string
+                                              :desc "Result title")
+                                       (:name url
+                                              :type string
+                                              :desc "Result URL")
+                                       (:name tags
+                                              :type array
+                                              :desc "Result tags"
+                                              :items (:type string)))))))))
+
     ;; Test nested types
     (let* ((results-field (dsel-signature-get-output-field sig 'results))
            (items (plist-get results-field :items))
@@ -123,7 +123,7 @@
     :input-fields
     (list
      '(:type string
-       :desc "Field without name")))
+             :desc "Field without name")))
    :type 'error)
   
   ;; Non-symbol :name
@@ -133,8 +133,8 @@
     :input-fields
     (list
      '(:name "string-name"
-       :type string
-       :desc "Field with string name")))
+             :type string
+             :desc "Field with string name")))
    :type 'error)
   
   ;; Missing :type
@@ -144,19 +144,15 @@
     :input-fields
     (list
      '(:name field
-       :desc "Field without type")))
+             :desc "Field without type")))
    :type 'error)
   
-  ;; Missing :desc
-  (should-error
-   (dsel-make-signature
-    "Test validation"
-    :input-fields
-    (list
-     '(:name field
-       :type string)))
-   :type 'error)
-  
+  ;; :desc is now optional, so this should NOT error.
+  ;; Instead, we can check that it defaults to "".
+  (let ((sig (dsel-make-signature "Test field without desc"
+                                  :input-fields (list '(:name field :type string)))))
+    (should (string= (plist-get (dsel-signature-get-input-field sig 'field) :desc) "")))
+
   ;; Array without items
   (should-error
    (dsel-make-signature
@@ -164,8 +160,8 @@
     :input-fields
     (list
      '(:name tags
-       :type array
-       :desc "Tags without items")))
+             :type array
+             :desc "Tags without items")))
    :type 'error)
   
   ;; Object without properties
@@ -175,8 +171,8 @@
     :input-fields
     (list
      '(:name user
-       :type object
-       :desc "User without properties")))
+             :type object
+             :desc "User without properties")))
    :type 'error))
 
 (provide 'dsel-signature-tests)
