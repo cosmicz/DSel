@@ -90,8 +90,8 @@ And may optionally include:
                             (when properties
                               (setq field-plist 
                                     (plist-put field-plist :properties 
-                                              (funcall #'dsel-convert-alist-to-field-plists properties))))))
-                        
+                                               (funcall #'dsel-convert-alist-to-field-plists properties))))))
+
                         field-plist))
                     fields-list))))
     
@@ -217,6 +217,10 @@ INPUT-KEYS should be a list of symbols, e.g., '(key1 key2) or just '(key1)."
 (defun dsel-example-field (example field-name-symbol)
   "Get the value of FIELD-NAME-SYMBOL from EXAMPLE."
   (cdr (assq field-name-symbol (dsel-example-fields example))))
+
+(defalias 'dsel-get-field #'dsel-example-field
+  "Get the value of FIELD-NAME-SYMBOL from an EXAMPLE-like object (e.g., dsel-example, dsel-prediction).
+This is an alias for `dsel-example-field'.")
 
 (defun dsel-set-example-field (example field-name-symbol value)
   "Set the value of FIELD-NAME-SYMBOL to VALUE in EXAMPLE."
