@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2024
 
-;; Author: 
+;; Author:
 ;; Keywords: llm, tools
 
 ;; This file is not part of GNU Emacs.
@@ -17,6 +17,7 @@
 (require 'cl-lib)
 (require 'llm)
 (require 'dsel-types)
+(require 'json)
 
 (cl-defstruct dsel-adapter
   "Base adapter structure for bridging between dsel and llm.el.")
@@ -42,34 +43,24 @@ FIELD-PLIST is a property list with :name, :type, etc."
          (field-enum (plist-get field-plist :enum))
          (field-items (plist-get field-plist :items))
          (field-properties (plist-get field-plist :properties))
-         (field-required (plist-get field-plist :required))
          (type-desc (format "%s%s"
                             (or field-type 'string)
                             (if field-optional " (optional)" ""))))
-    ;; Build the description
-    (concat 
+    (concat
      (format "- `%s` (%s): %s" field-name type-desc (or field-desc ""))
-
-     ;; Add enum values if present
      (when (and field-enum (vectorp field-enum) (> (length field-enum) 0))
-       (format "\n  Allowed values: %s" 
-               (mapconcat #'identity 
-                          (mapcar (lambda (i) (format "\"%s\"" (aref field-enum i)))
-                                  (number-sequence 0 (1- (length field-enum))))
-                          ", ")))
-
-     ;; Add array item type if present
-     (when (and (eq field-type 'array) field-items)
-       (format "\n  Array items: %s" 
-               (plist-get field-items :type)))
-
-     ;; Add object properties if present (simplified)
+       (format "\n  Allowed values: %s"
+               (mapconcat (lambda (val) (format "\"%s\"" val)) (append field-enum nil) ", ")))
+     (when (and (eq field-type 'array) field-items (plist-get field-items :type))
+       (format "\n  Array items are of type: %s" (plist-get field-items :type)))
      (when (and (eq field-type 'object) field-properties)
-       (format "\n  Object with properties: %s" 
-               (mapconcat (lambda (prop) (format "`%s`" (plist-get prop :name)))
+       (format "\n  Object with properties: %s"
+               (mapconcat (lambda (prop-plist) (format "`%s` (%s)"
+                                                       (plist-get prop-plist :name)
+                                                       (plist-get prop-plist :type)))
                           field-properties ", "))))))
 
-(cl-defmethod dsel-adapter-format-prompt ((adapter dsel-default-chat-adapter) 
+(cl-defmethod dsel-adapter-format-prompt ((adapter dsel-default-chat-adapter)
                                           signature demos current-inputs-alist)
   "Format a chat prompt for the default adapter.
 SIGNATURE is a `dsel-signature'.
@@ -77,41 +68,33 @@ DEMOS is a list of `dsel-example'.
 CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
   (let ((system-prompt
          (concat
-          ;; Start with the signature instructions
           (dsel-signature-instructions signature)
           "\n\n"
-          ;; Append descriptions for input fields
           "Your input fields are:\n"
           (mapconcat #'dsel--format-field-description
                      (dsel-signature-input-fields signature)
                      "\n")
           "\n\n"
-          ;; Append descriptions for output fields
           "Your output fields are:\n"
           (mapconcat #'dsel--format-field-description
                      (dsel-signature-output-fields signature)
                      "\n")
           "\n\n"
-          ;; Append formatting instruction
           "Please provide your response with each field clearly demarcated. For example:\n"
           (mapconcat
            (lambda (field-plist)
-             (format "%s[Value for %s]" 
+             (format "%s[Value for %s]"
                      (plist-get field-plist :prefix)
                      (plist-get field-plist :name)))
            (dsel-signature-output-fields signature)
            "\n")))
-        
-        ;; Current input for main content argument
-        (current-input-content 
+        (current-input-content
          (dsel--format-input-fields signature current-inputs-alist)))
-
-    ;; Create a proper llm-chat-prompt structure using expected keywords
     (llm-make-chat-prompt
      current-input-content
-     :context system-prompt 
+     :context system-prompt
      :examples (cl-loop for demo in demos
-                        collect (cons 
+                        collect (cons
                                  (dsel--format-input-fields signature (dsel-example-inputs demo))
                                  (dsel--format-output-fields signature (dsel-example-labels demo)))))))
 
@@ -127,7 +110,7 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
           (let ((value (cdr input-pair)))
             (setq result (concat result
                                  field-prefix
-                                 (funcall format-fn "%s" value)
+                                 (funcall format-fn "%s" (if (stringp value) value (format "%S" value)))
                                  "\n\n"))))))
     result))
 
@@ -143,33 +126,104 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
           (let ((value (cdr output-pair)))
             (setq result (concat result
                                  field-prefix
-                                 (funcall format-fn "%s" value)
+                                 (funcall format-fn "%s" (if (stringp value) value (format "%S" value)))
                                  "\n\n"))))))
     result))
 
+;; In dsel-adapter.el
+
 (cl-defmethod dsel-adapter-parse-output ((adapter dsel-default-chat-adapter)
                                          signature llm-response-string)
-  "Parse LLM-RESPONSE-STRING using the default adapter and SIGNATURE."
-  (let ((result nil))
-    (dolist (field-plist (dsel-signature-output-fields signature))
-      (let* ((field-name (plist-get field-plist :name))
-             (field-prefix (plist-get field-plist :prefix))
-             (field-optional (plist-get field-plist :optional))
-             ;; Use regex to extract value between this prefix and the next prefix or end
-             (prefix-pattern (regexp-quote field-prefix))
-             ;; Use a simpler regex that matches until we see a double newline or end of string
-             (value-pattern (concat prefix-pattern "\\(.*?\\)\\(?:\n\n\\|\n*\\'\\)"))
-             (value-match (when (string-match value-pattern llm-response-string)
-                            (match-string 1 llm-response-string)))
-             (parsed-value (when value-match
-                             (dsel--coerce-value (string-trim value-match) field-plist))))
-        ;; Add to result if we got a value (nil is valid for booleans)
-        (if parsed-value
-            (push (cons field-name parsed-value) result)
-          ;; Handle missing required fields
-          (unless field-optional
-            (message "Warning: Required field '%s' missing or failed to parse" field-name)))))
-    (nreverse result)))
+  "Parse LLM-RESPONSE-STRING using the default adapter and SIGNATURE.
+This version attempts to handle multi-line fields more robustly."
+  (let ((parsed-fields-alist nil) ; Alist of (field-name . raw-string-value)
+        (output-field-plists (dsel-signature-output-fields signature))
+        (current-pos 0))
+
+    ;; 1. Create a list of (prefix-string . field-name-symbol) for quick lookup
+    ;;    Sort them by length descending to handle overlapping prefixes (e.g., "Note:" and "Note Details:")
+    (let* ((prefix-map
+            (sort (mapcar (lambda (fp)
+                            (cons (plist-get fp :prefix) (plist-get fp :name)))
+                          output-field-plists)
+                  (lambda (a b) (> (length (car a)) (length (car b))))))
+           (all-prefixes (mapcar #'car prefix-map)))
+
+      ;; 2. Iteratively find and extract fields
+      (while (< current-pos (length llm-response-string))
+        (let* ((next-match-data nil) ; To store (match-start field-name prefix-len)
+               (search-from current-pos))
+
+          ;; Find the earliest occurrence of any known prefix from current-pos
+          (dolist (prefix-info prefix-map)
+            (let* ((prefix-str (car prefix-info))
+                   (field-name-for-prefix (cdr prefix-info))
+                   (match-start (string-match (regexp-quote prefix-str) llm-response-string search-from)))
+              (when match-start
+                (if (or (null next-match-data) (< match-start (car next-match-data)))
+                    (setq next-match-data (list match-start field-name-for-prefix (length prefix-str)))))))
+
+          (if next-match-data
+              (let* ((field-start-pos (car next-match-data))
+                     (field-name (cadr next-match-data))
+                     (prefix-len (caddr next-match-data))
+                     (value-start-pos (+ field-start-pos prefix-len))
+                     (value-end-pos (length llm-response-string)) ; Default to end of string
+                     (raw-value nil))
+
+                ;; If there was a previous field, its value ends where this one starts
+                (when (and parsed-fields-alist
+                           (null (assoc field-name parsed-fields-alist))) ; Avoid re-processing due to unordered LLM output
+                  ;; This logic is complex if LLM reorders fields.
+                  ;; For now, assume this means we found the *next* field for the previous one.
+                  ;; A simpler model: the value of a field is from its prefix to the next known prefix or EOS.
+                  )
+
+
+                ;; Find the end of the current field's value
+                ;; It ends either at the start of the *next* different prefix, or end of string
+                (let ((next-value-search-start value-start-pos))
+                  (dolist (next-prefix-info prefix-map)
+                    (let* ((next-prefix-str (car next-prefix-info))
+                           (next-field-name (cdr next-prefix-info)))
+                      ;; Only consider it a delimiter if it's a *different* field's prefix
+                      (unless (eq field-name next-field-name)
+                        (let ((next-prefix-match-pos (string-match (regexp-quote next-prefix-str)
+                                                                   llm-response-string
+                                                                   next-value-search-start)))
+                          (when next-prefix-match-pos
+                            (setq value-end-pos (min value-end-pos next-prefix-match-pos))))))))
+
+                (setq raw-value (string-trim (substring llm-response-string value-start-pos value-end-pos)))
+                (push (cons field-name raw-value) parsed-fields-alist)
+
+                ;; Advance current-pos to the end of this extracted field's value
+                ;; This is where it gets tricky if we want to re-scan for out-of-order fields.
+                ;; A simpler model for now: advance past this found field.
+                (setq current-pos value-end-pos)
+
+                ;; If we set current_pos to value_end_pos, and value_end_pos was determined by the start
+                ;; of the *next* prefix, the next loop iteration will re-find that next prefix.
+                ;; If value_end_pos was (length llm-response-string), the loop terminates.
+                )
+            (setq current-pos (length llm-response-string)) ; No more known prefixes found
+            )))
+      ) ; End of while and outer let*
+
+    ;; 3. Coerce and validate based on signature
+    (let ((final-result nil))
+      (dolist (field-plist output-field-plists)
+        (let* ((field-name (plist-get field-plist :name))
+               (field-optional (plist-get field-plist :optional))
+               (raw-value-pair (assq field-name parsed-fields-alist))
+               (raw-value (if raw-value-pair (cdr raw-value-pair) nil)))
+
+          (if raw-value
+              (let ((coerced-value (dsel--coerce-value raw-value field-plist)))
+                (push (cons field-name coerced-value) final-result))
+            (unless field-optional
+              (message "Warning: Required output field '%s' was not found in LLM response." field-name)))))
+      (nreverse final-result))))
 
 (defun dsel--coerce-value (string-value field-plist)
   "Coerce STRING-VALUE according to the type specified in FIELD-PLIST.
@@ -177,44 +231,28 @@ Handles enhanced field types including enum, array, and object."
   (let ((type (plist-get field-plist :type))
         (enum-values (plist-get field-plist :enum)))
     (cond
-     ;; Handle enum values
      (enum-values
-      (when (and (vectorp enum-values) (> (length enum-values) 0))
-        (let ((trimmed-value (string-trim string-value)))
-          (catch 'found
-            (dotimes (i (length enum-values))
-              (when (string= trimmed-value (aref enum-values i))
-                (throw 'found trimmed-value)))
-            ;; If we get here, no match was found
-            (message "Warning: Value '%s' not in enum %s" trimmed-value enum-values)
+      (let ((trimmed-value (string-trim string-value)))
+        (if (and (vectorp enum-values) (cl-find trimmed-value enum-values :test #'string=))
+            trimmed-value
+          (progn
+            (message "Warning: Value '%s' not in enum %s for field '%s'. Returning raw value."
+                     trimmed-value enum-values (plist-get field-plist :name))
             trimmed-value))))
-     
-     ;; Handle basic types
      ((eq type 'string) string-value)
-     ((eq type 'integer) (string-to-number string-value))
-     ((eq type 'number) (string-to-number string-value))
+     ((eq type 'integer) (condition-case nil (string-to-number string-value) (error string-value)))
+     ((eq type 'number) (condition-case nil (string-to-number string-value) (error string-value)))
      ((eq type 'boolean)
       (cond
        ((string-match-p "\\`\\(?:t\\|true\\|yes\\)\\'" (downcase string-value)) t)
        ((string-match-p "\\`\\(?:nil\\|false\\|no\\)\\'" (downcase string-value)) nil)
        (t nil)))
-     
-     ;; Handle complex types
      ((eq type 'array)
-      (condition-case nil
-          (json-parse-string string-value)
-        (error
-         ;; Fallback: try to parse as a comma-separated list
-         (mapcar #'string-trim (split-string string-value "," t)))))
-     
+      (condition-case nil (json-read-from-string string-value) ; Use json-read for vectors
+        (error (mapcar #'string-trim (split-string string-value "," t)))))
      ((eq type 'object)
-      (condition-case nil
-          (json-parse-string string-value :object-type 'alist)
-        (error
-         ;; Return the raw string if we can't parse as JSON
-         string-value)))
-     
-     ;; Default fallback
+      (condition-case nil (json-read-from-string string-value) ; json-read uses alist for objects
+        (error string-value)))
      (t string-value))))
 
 (provide 'dsel-adapter)
