@@ -19,64 +19,141 @@
 ;;; Signature
 
 (cl-defstruct dsel-signature
-  "A structure representing an LLM task signature."
+  "A structure representing an LLM task signature.
+Following JSON Schema conventions, fields are defined as plists with :name, :type, etc."
   name                                  ; Symbol, optional: A descriptive name for the signature
   instructions                          ; String: The high-level task instructions for the LLM
-  input-fields                          ; Alist of (field-name-symbol . field-plist)
-  output-fields)                        ; Alist of (field-name-symbol . field-plist)
+  input-fields                          ; List of field plists, each with :name, :type, :desc, etc.
+  output-fields)                        ; List of field plists, each with :name, :type, :desc, etc.
 
 (defun dsel-make-signature (instructions &rest plist)
   "Create a new signature with INSTRUCTIONS and properties from PLIST.
 PLIST may include:
 - :name A symbol for the signature name
-- :input-fields Alist of (field-name-symbol . field-plist)
-- :output-fields Alist of (field-name-symbol . field-plist)
+- :input-fields List of field plists
+- :output-fields List of field plists
 
-Each field-plist may include:
-- :type Expected Elisp type (e.g., 'string, 'integer)
-- :desc Natural language description of the field
-- :prefix String to prepend when formatting (defaults to field name)
-- :format-fn Function to convert value to string (optional)"
+Each field plist must include:
+- :name Symbol identifying the field (required)
+- :type Expected type (e.g., 'string, 'integer, 'boolean, 'array, 'object) (required)
+- :desc Natural language description of the field (required)
+
+And may optionally include:
+- :prefix String to prepend when formatting (defaults to capitalized :name)
+- :format-fn Function to convert value to string (optional)
+- :optional Boolean indicating if the field is optional (default is nil)
+- :enum Vector of allowed values for string fields (optional)
+- :items Property list describing array item type (required for 'array type)
+- :properties List of property field plists (required for 'object type)
+- :required List of required property name symbols (for 'object type)"
   (let* ((name (plist-get plist :name))
          (input-fields (plist-get plist :input-fields))
-         (output-fields (plist-get plist :output-fields)))
+         (output-fields (plist-get plist :output-fields))
+         (process-fields
+          (lambda (fields-list)
+            (mapcar (lambda (field-plist)
+                      (let* ((field-name (plist-get field-plist :name))
+                             (field-type (plist-get field-plist :type))
+                             (field-desc (plist-get field-plist :desc))
+                             (prefix (plist-get field-plist :prefix)))
+                        
+                        ;; Validate required properties
+                        (unless field-name
+                          (error "Field must have a :name"))
+                        (unless (symbolp field-name)
+                          (error "Field :name must be a symbol: %s" field-name))
+                        (unless field-desc
+                          (error "Field '%s' must have a :desc" field-name))
+                        (unless field-type
+                          (error "Field '%s' must have a :type" field-name))
+                        
+                        ;; Validate type-specific required properties
+                        (when (eq field-type 'array)
+                          (unless (plist-get field-plist :items)
+                            (error "Array field '%s' must have :items" field-name)))
+                        
+                        (when (eq field-type 'object)
+                          (unless (plist-get field-plist :properties)
+                            (error "Object field '%s' must have :properties" field-name)))
+                        
+                        ;; Generate default prefix if needed
+                        (unless prefix
+                          ;; Simple and predictable prefix generation
+                          (setq prefix 
+                                (concat (capitalize (symbol-name field-name)) ": "))
+                          ;; Convert kebab-case, snake_case, camelCase to simple capitalized format
+                          (setq field-plist (plist-put field-plist :prefix prefix)))
+                        
+                        ;; If object, process property fields recursively
+                        (when (eq field-type 'object)
+                          (let ((properties (plist-get field-plist :properties)))
+                            (when properties
+                              (setq field-plist 
+                                    (plist-put field-plist :properties 
+                                              (funcall #'dsel-convert-alist-to-field-plists properties))))))
+                        
+                        field-plist))
+                    fields-list))))
+    
     ;; Basic validation
     (unless (stringp instructions)
       (error "Instructions must be a string"))
     
-    ;; Generate default prefixes if needed
-    (setq input-fields
-          (mapcar (lambda (field)
-                    (let* ((field-name (car field))
-                           (field-plist (cdr field))
-                           (prefix (plist-get field-plist :prefix)))
-                      (unless prefix
-                        (setq prefix (concat (capitalize 
-                                              (replace-regexp-in-string
-                                               "-" " " (symbol-name field-name)))
-                                             ": "))
-                        (setq field-plist (plist-put field-plist :prefix prefix)))
-                      (cons field-name field-plist)))
-                  input-fields))
+    ;; Convert alist-style fields to plist-style for backward compatibility
+    (setq input-fields (dsel-convert-alist-to-field-plists input-fields))
+    (setq output-fields (dsel-convert-alist-to-field-plists output-fields))
     
-    (setq output-fields
-          (mapcar (lambda (field)
-                    (let* ((field-name (car field))
-                           (field-plist (cdr field))
-                           (prefix (plist-get field-plist :prefix)))
-                      (unless prefix
-                        (setq prefix (concat (capitalize 
-                                              (replace-regexp-in-string
-                                               "-" " " (symbol-name field-name)))
-                                             ": "))
-                        (setq field-plist (plist-put field-plist :prefix prefix)))
-                      (cons field-name field-plist)))
-                  output-fields))
+    ;; Process fields with validation and default prefixes
+    (setq input-fields (funcall process-fields input-fields))
+    (setq output-fields (funcall process-fields output-fields))
     
     (make-dsel-signature :name name
                          :instructions instructions
                          :input-fields input-fields
                          :output-fields output-fields)))
+
+;;; Field conversion and access helpers
+
+(defun dsel-convert-alist-to-field-plists (fields-alist)
+  "Convert an alist of field definitions to a list of field plists.
+Handles the transition from old format ((field-name . field-plist) ...)
+to new format ((:name field-name ...) ...)."
+  (when fields-alist
+    (if (and (consp (car fields-alist))
+             (not (keywordp (car (car fields-alist)))))
+        ;; Old alist format: ((field-name . field-plist) ...)
+        (mapcar (lambda (pair)
+                  (let ((name (car pair))
+                        (plist (cdr pair)))
+                    (plist-put plist :name name)))
+                fields-alist)
+      ;; Already in new format or empty
+      fields-alist)))
+
+(defun dsel-get-field-by-name (fields name)
+  "Find a field with NAME in FIELDS list.
+FIELDS is a list of field plists, NAME is a symbol."
+  (cl-find-if (lambda (field) (eq (plist-get field :name) name)) fields))
+
+(defun dsel-signature-get-input-field (signature field-name)
+  "Get the input field with FIELD-NAME from SIGNATURE."
+  (dsel-get-field-by-name (dsel-signature-input-fields signature) field-name))
+
+(defun dsel-signature-get-output-field (signature field-name)
+  "Get the output field with FIELD-NAME from SIGNATURE."
+  (dsel-get-field-by-name (dsel-signature-output-fields signature) field-name))
+
+(defun dsel-field-names (fields)
+  "Return a list of field names from FIELDS."
+  (mapcar (lambda (field) (plist-get field :name)) fields))
+
+(defun dsel-signature-input-field-names (signature)
+  "Return a list of input field names from SIGNATURE."
+  (dsel-field-names (dsel-signature-input-fields signature)))
+
+(defun dsel-signature-output-field-names (signature)
+  "Return a list of output field names from SIGNATURE."
+  (dsel-field-names (dsel-signature-output-fields signature)))
 
 ;;; Example
 

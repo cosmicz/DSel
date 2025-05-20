@@ -73,7 +73,7 @@
                :output-fields '((sentiment . (:type string :desc "The sentiment: positive, negative, or neutral"))
                                 (confidence . (:type number :desc "Confidence score from 0 to 1")))))
          (adapter (make-dsel-default-chat-adapter))
-         (response "Sentiment: positive\nConfidence: 0.95")
+         (response "Sentiment: positive\n\nConfidence: 0.95")
          (result (dsel-adapter-parse-output adapter sig response)))
     
     ;; Test parsed result

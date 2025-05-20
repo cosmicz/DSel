@@ -58,7 +58,7 @@ The first match is used. Tests can `let`-bind this.")
                      (cl-return (cdr mapping)) ; Return the matched response from cl-loop
                      finally
                      ;; (message "LLM-FAKE-CHAT-RESPONSE: no match in map (loop finished), using default.")
-                     (cl-return "Rationale: Default Fake Rationale\nB: default_b\nY: default_y")))))) ; Default if loop finishes
+                     (cl-return "Rationale: Default Fake Rationale\n\nB: default_b\n\nY: default_y")))))) ; Default if loop finishes
   "Function to simulate LLM chat action, potentially using dsel-test-llm-prompt-to-response-map.")
 
 ;; dsel-setup-test-environment calls make-llm-fake with this lambda.
@@ -105,6 +105,9 @@ The first match is used. Tests can `let`-bind this.")
 (require 'dsel-adapter-tests)
 (require 'dsel-predictors-tests)
 (require 'dsel-optimizers-tests)
+(require 'dsel-signature-extended-tests)
+(require 'dsel-complex-types-tests)
+(require 'dsel-signature-tests)
 
 ;; Run tests
 

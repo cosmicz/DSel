@@ -24,8 +24,8 @@
          (sig (dsel-make-signature
                instructions
                :name 'sentiment-classifier
-               :input-fields '((text . (:type string :desc "The text to classify")))
-               :output-fields '((sentiment . (:type string :desc "The sentiment: positive, negative, or neutral"))))))
+               :input-fields (list '(:name text :type string :desc "The text to classify"))
+               :output-fields (list '(:name sentiment :type string :desc "The sentiment: positive, negative, or neutral")))))
     
     ;; Test structure
     (should (dsel-signature-p sig))
@@ -37,8 +37,8 @@
     (should (= (length (dsel-signature-output-fields sig)) 1))
     
     ;; Test default prefix generation
-    (let ((text-field (cdr (assq 'text (dsel-signature-input-fields sig))))
-          (sentiment-field (cdr (assq 'sentiment (dsel-signature-output-fields sig)))))
+    (let ((text-field (dsel-signature-get-input-field sig 'text))
+          (sentiment-field (dsel-signature-get-output-field sig 'sentiment)))
       (should (string= (plist-get text-field :prefix) "Text: "))
       (should (string= (plist-get sentiment-field :prefix) "Sentiment: ")))))
 

@@ -17,10 +17,10 @@
   (let* ((sig (dsel-make-signature
                "Echo the input value"
                :name 'test-signature
-               :input-fields '((foo . (:type string :desc "")))
-               :output-fields '((bar . (:type string :desc "")))))
+               :input-fields (list '(:name foo :type string :desc ""))
+               :output-fields (list '(:name bar :type string :desc ""))))
          (predictor (dsel-make-predict sig :lm dsel-test-llm-provider))
-         (expected-raw-response "Rationale: Default Fake Rationale\nB: default_b\nY: default_y")
+         (expected-raw-response "Rationale: Default Fake Rationale\n\nB: default_b\n\nY: default_y")
          (prediction (dsel-forward predictor :foo "hello")))
 
     ;; (message "DEBUG: Prediction object in test: %S" prediction)
@@ -41,10 +41,10 @@
   (let* ((sig (dsel-make-signature
                "Test COT"
                :name 'test-cot
-               :input-fields '((x . (:type string :desc "")))
-               :output-fields '((y . (:type string :desc "")))))
+               :input-fields (list '(:name x :type string :desc ""))
+               :output-fields (list '(:name y :type string :desc ""))))
          (cot (dsel-make-chain-of-thought sig :lm dsel-test-llm-provider))
-         (expected-raw-response "Rationale: Default Fake Rationale\nB: default_b\nY: default_y")
+         (expected-raw-response "Rationale: Default Fake Rationale\n\nB: default_b\n\nY: default_y")
          (prediction (dsel-forward cot :x "value")))
     (should (dsel-prediction-p prediction))
     (should (equal (dsel-prediction-lm-provider prediction)
@@ -61,8 +61,8 @@
   (let* ((sig (dsel-make-signature
                "Test COT with Demos"
                :name 'test-cot-demos
-               :input-fields '((input . (:type string :desc "")))
-               :output-fields '((output . (:type string :desc "")))))
+               :input-fields (list '(:name input :type string :desc ""))
+               :output-fields (list '(:name output :type string :desc ""))))
          ;; Create some example demos
          (demo1 (dsel-make-example :input "sample1" :output "result1"))
          (demo2 (dsel-make-example :input "sample2" :output "result2"))

@@ -18,8 +18,8 @@
   (let* ((sig (dsel-make-signature
                "Test LF"
                :name 'lf-sig
-               :input-fields '((a . (:type string)))
-               :output-fields '((b . (:type string)))))
+               :input-fields '((a . (:type string :desc "Input A")))
+               :output-fields '((b . (:type string :desc "Output B")))))
          (student (dsel-make-predict sig))
          (examples (list
                     (dsel-make-example :a "one" :b "1")
@@ -40,8 +40,8 @@
   (let* ((sig (dsel-make-signature
                "Test BF"
                :name 'bf-sig
-               :input-fields '((a . (:type string)))
-               :output-fields '((b . (:type string)))))
+               :input-fields '((a . (:type string :desc "Input A")))
+               :output-fields '((b . (:type string :desc "Output B")))))
          (student (dsel-make-predict sig))
          (examples (list
                     (dsel-example-with-inputs (dsel-make-example :a "one" :b "1") 'a)

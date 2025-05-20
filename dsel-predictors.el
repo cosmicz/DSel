@@ -128,15 +128,17 @@ PLIST may include:
                                      "Rationale: "))
          (rationale-field-desc (or (plist-get plist :rationale-field-desc)
                                    "Your step-by-step reasoning process"))
-         (rationale-field-plist `(:type string
-                                        :desc ,rationale-field-desc
-                                        :prefix ,rationale-field-prefix))
+         ;; Create rationale field as a plist with :name keyword
+         (rationale-field `(:name ,rationale-field-name
+                                  :type string
+                                  :desc ,rationale-field-desc
+                                  :prefix ,rationale-field-prefix))
+         ;; Use the new format for output fields
          (cot-signature (dsel-make-signature
                          instructions
                          :name sig-name
                          :input-fields input-fields
-                         :output-fields (cons (cons rationale-field-name rationale-field-plist)
-                                              output-fields))))
+                         :output-fields (cons rationale-field output-fields))))
     (let ((predictor (dsel-make-predict
                       cot-signature
                       :lm (plist-get plist :lm)
