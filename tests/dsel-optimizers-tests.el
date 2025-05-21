@@ -58,8 +58,8 @@
                      ))
          (compiled
           (let ((dsel-test-llm-prompt-to-response-map ; fake llm behavior
-                 '(("A: one" . "B: 1")
-                   ("A: two" . "B: 2"))))
+                 `((,(dsel--format-input-fields sig '((a . "one"))) . ,(dsel--format-output-fields sig '((b . "1"))))
+                   (,(dsel--format-input-fields sig '((a . "two"))) . ,(dsel--format-output-fields sig '((b . "2")))))))
             ;; Use the same student as teacher for simplicity
             (dsel-compile optimizer student :trainset examples :teacher student))))
     (should (dsel-module-p compiled))

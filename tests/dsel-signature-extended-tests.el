@@ -38,8 +38,8 @@
     (should (string= instructions (dsel-signature-instructions sig)))
     (let ((in-field (dsel-signature-get-input-field sig 'inField))
           (out-field (dsel-signature-get-output-field sig 'outField)))
-      (should (string= "Infield: " (plist-get in-field :prefix)))
-      (should (string= "Outfield: " (plist-get out-field :prefix))))))
+      (should (string= "Infield:" (plist-get in-field :prefix)))
+      (should (string= "Outfield:" (plist-get out-field :prefix))))))
 
 (ert-deftest dsel-test-signature-with-enum ()
   "Test signature creation with an enum field."

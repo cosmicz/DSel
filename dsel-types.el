@@ -85,7 +85,8 @@ And may optionally include:
                         (setq processed-plist (plist-put processed-plist :properties (process-field-list properties))))))
 
                     (unless prefix
-                      (setq prefix (concat (capitalize (symbol-name field-name)) ": "))
+                      ;; Don't include a space after the colon for more flexible matching
+                      (setq prefix (concat (capitalize (symbol-name field-name)) ":"))
                       (setq processed-plist (plist-put processed-plist :prefix prefix)))
 
                     processed-plist))

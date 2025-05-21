@@ -18,11 +18,11 @@
                "Echo the input value"
                :name 'test-signature
                :input-fields (list '(:name foo :type string :desc "Input foo"))
-               :output-fields (list '(:name bar :type string :desc "Output bar" :prefix "Bar: ")))) ; Ensure prefix for parsing
+               :output-fields (list '(:name bar :type string :desc "Output bar" :prefix "Bar:")))) ; Prefix without trailing space
          (predictor (dsel-make-predict sig :lm dsel-test-llm-provider))
          ;; Set up the expected response for this specific test case via the map
-         (dsel-test-llm-prompt-to-response-map `(("Foo: hello" . "Bar: world")))
-         (expected-raw-response "Bar: world") ; The exact response we expect
+         (dsel-test-llm-prompt-to-response-map `((,(dsel--format-input-fields sig '((foo . "hello"))) . "Bar:world\n\n")))
+         (expected-raw-response "Bar:world\n\n") ; The exact response we expect
          (prediction (dsel-forward predictor :foo "hello")))
 
     (should (dsel-prediction-p prediction))
@@ -40,12 +40,12 @@
                "Test COT"
                :name 'test-cot
                :input-fields (list '(:name x :type string :desc "Input X"))
-               :output-fields (list '(:name y :type string :desc "Output Y" :prefix "Y: "))))
+               :output-fields (list '(:name y :type string :desc "Output Y" :prefix "Y:"))))
          (cot (dsel-make-chain-of-thought sig :lm dsel-test-llm-provider
-                                          :rationale-field-prefix "Rationale: "))
+                                          :rationale-field-prefix "Rationale:"))
          ;; Define the expected response for this specific test case via the map
          (dsel-test-llm-prompt-to-response-map
-          `((,(concat "X: value" "\n\n") . ; Input prompt key - dsel--format-input-fields adds \n\n
+          `((,(dsel--format-input-fields (dsel-chain-of-thought-cot-signature cot) '((x . "value"))) .
              "Rationale: Custom rationale for COT test.\n\nY: custom_y_value\n\n")))
          (expected-raw-response "Rationale: Custom rationale for COT test.\n\nY: custom_y_value\n\n")
          (prediction (dsel-forward cot :x "value")))

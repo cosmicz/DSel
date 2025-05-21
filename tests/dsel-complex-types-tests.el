@@ -273,19 +273,19 @@
     ;; Check all field prefixes are capitalized properly
     (let ((fields (dsel-signature-input-fields sig)))
       (let ((simple-field (dsel-get-field-by-name fields 'simple-name)))
-        (should (string= "Simple-Name: " (plist-get simple-field :prefix))))
+        (should (string= "Simple-Name:" (plist-get simple-field :prefix))))
 
       (let ((snake-field (dsel-get-field-by-name fields 'snake_case_name)))
-        (should (string= "Snake_Case_Name: " (plist-get snake-field :prefix))))
+        (should (string= "Snake_Case_Name:" (plist-get snake-field :prefix))))
 
       (let ((camel-field (dsel-get-field-by-name fields 'camelCaseName)))
-        (should (string= "Camelcasename: " (plist-get camel-field :prefix))))
+        (should (string= "Camelcasename:" (plist-get camel-field :prefix))))
 
       (let ((pascal-field (dsel-get-field-by-name fields 'PascalCaseName)))
-        (should (string= "Pascalcasename: " (plist-get pascal-field :prefix))))
+        (should (string= "Pascalcasename:" (plist-get pascal-field :prefix))))
 
       (let ((upper-field (dsel-get-field-by-name fields 'UPPERCASE_NAME)))
-        (should (string= "Uppercase_Name: " (plist-get upper-field :prefix)))))))
+        (should (string= "Uppercase_Name:" (plist-get upper-field :prefix)))))))
 
 (provide 'dsel-complex-types-tests)
 ;;; dsel-complex-types-tests.el ends here

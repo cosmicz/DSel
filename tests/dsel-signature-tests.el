@@ -50,8 +50,8 @@
       (should (eq 'string (plist-get sentiment-field :type)))
       
       ;; Test default prefix generation
-      (should (string= "Text: " (plist-get text-field :prefix)))
-      (should (string= "Sentiment: " (plist-get sentiment-field :prefix))))))
+      (should (string= "Text:" (plist-get text-field :prefix)))
+      (should (string= "Sentiment:" (plist-get sentiment-field :prefix))))))
 
 (ert-deftest dsel-test-json-schema-field-names ()
   "Test field name extraction functions."

@@ -83,7 +83,7 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
           "Please provide your response with each field clearly demarcated. For example:\n"
           (mapconcat
            (lambda (field-plist)
-             (format "%s[Value for %s]"
+             (format "%s [Value for %s]"
                      (plist-get field-plist :prefix)
                      (plist-get field-plist :name)))
            (dsel-signature-output-fields signature)
@@ -130,100 +130,124 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
                                  "\n\n"))))))
     result))
 
-;; In dsel-adapter.el
+(defun dsel--find-earliest-matching-prefix (text start-pos output-field-plists)
+  "Find the earliest occurring field from OUTPUT-FIELD-PLISTS in TEXT at or after START-POS.
+Returns (list MATCHING-FIELD-PLIST PREFIX-START-INDEX ACTUAL-PREFIX-END-INDEX) or nil."
+  (let ((best-match-field-plist nil)
+        (earliest-match-start-idx -1) ; Stores the (match-beginning 0) of the earliest prefix
+        (best-match-prefix-actual-end -1)) ; Stores the (match-end 0) of the regex for that prefix
+    (dolist (field-plist output-field-plists)
+      (let* ((prefix-from-sig (plist-get field-plist :prefix))
+             ;; Ensure prefix isn't empty, which would cause issues with regexp-quote and matching
+             (_ (when (string-empty-p prefix-from-sig) (error "Empty prefix found for field %s" (plist-get field-plist :name))))
+             (regex-to-find-prefix (concat (regexp-quote prefix-from-sig) "\\s-*"))
+             (match-start (string-match regex-to-find-prefix text start-pos)))
+        (when match-start
+          (if (or (= earliest-match-start-idx -1) (< match-start earliest-match-start-idx))
+              (setq earliest-match-start-idx match-start
+                    best-match-field-plist field-plist
+                    best-match-prefix-actual-end (match-end 0)))))) ; This is (match-end 0) of the regex, i.e., after prefix and spaces
+    (if best-match-field-plist
+        (list best-match-field-plist earliest-match-start-idx best-match-prefix-actual-end)
+      nil)))
+
+(defun dsel--extract-raw-value-and-next-pos (text current-field-plist value-start-idx all-output-field-plists)
+  "Extract raw string value for CURRENT-FIELD-PLIST starting at VALUE-START-IDX.
+Value ends before the next known prefix or at end of TEXT.
+Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
+  (let ((value-end-idx (length text)) ; Default to end of string
+        raw-value)
+    ;; Find where this field's value ends
+    (let ((next-known-prefix-earliest-start-pos -1))
+      (dolist (next-candidate-plist all-output-field-plists)
+        (unless (eq current-field-plist next-candidate-plist)
+          (let* ((next-prefix-from-sig (plist-get next-candidate-plist :prefix))
+                 (next-regex (concat (regexp-quote next-prefix-from-sig) "\\s-*"))
+                 (match-pos (string-match next-regex text value-start-idx)))
+            (when match-pos
+              (if (or (= next-known-prefix-earliest-start-pos -1) (< match-pos next-known-prefix-earliest-start-pos))
+                  (setq next-known-prefix-earliest-start-pos match-pos))))))
+      (when (/= next-known-prefix-earliest-start-pos -1)
+        (setq value-end-idx next-known-prefix-earliest-start-pos)))
+
+    (setq raw-value (if (>= value-start-idx value-end-idx)
+                        ""
+                      (string-trim (substring text value-start-idx value-end-idx))))
+    (list raw-value value-end-idx)))
 
 (cl-defmethod dsel-adapter-parse-output ((adapter dsel-default-chat-adapter)
                                          signature llm-response-string)
-  "Parse LLM-RESPONSE-STRING using the default adapter and SIGNATURE.
-This version attempts to handle multi-line fields more robustly."
-  (let ((parsed-fields-alist nil) ; Alist of (field-name . raw-string-value)
+  "Parse LLM-RESPONSE-STRING using the default adapter and SIGNATURE."
+  (let ((raw-parsed-fields (make-hash-table :test 'eq))
         (output-field-plists (dsel-signature-output-fields signature))
-        (current-pos 0))
+        (final-result-alist nil)
+        (current-pos 0)
+        (loop-count 0))
 
-    ;; 1. Create a list of (prefix-string . field-name-symbol) for quick lookup
-    ;;    Sort them by length descending to handle overlapping prefixes (e.g., "Note:" and "Note Details:")
-    (let* ((prefix-map
-            (sort (mapcar (lambda (fp)
-                            (cons (plist-get fp :prefix) (plist-get fp :name)))
-                          output-field-plists)
-                  (lambda (a b) (> (length (car a)) (length (car b))))))
-           (all-prefixes (mapcar #'car prefix-map)))
+    (message "PARSE-OUTPUT: START. Response length: %d. Response: %S" (length llm-response-string) llm-response-string)
 
-      ;; 2. Iteratively find and extract fields
-      (while (< current-pos (length llm-response-string))
-        (let* ((next-match-data nil) ; To store (match-start field-name prefix-len)
-               (search-from current-pos))
+    (while (< current-pos (length llm-response-string))
+      (setq loop-count (1+ loop-count))
+      (when (> loop-count (+ 5 (* 2 (length output-field-plists))))
+        (message "PARSE-OUTPUT: ERROR - Loop guard hit (%d loops). Pos: %d. Aborting." loop-count current-pos)
+        (error "Parser loop stuck (guard hit)")
+        (cl-return)) ; Should not be reached due to error
 
-          ;; Find the earliest occurrence of any known prefix from current-pos
-          (dolist (prefix-info prefix-map)
-            (let* ((prefix-str (car prefix-info))
-                   (field-name-for-prefix (cdr prefix-info))
-                   (match-start (string-match (regexp-quote prefix-str) llm-response-string search-from)))
-              (when match-start
-                (if (or (null next-match-data) (< match-start (car next-match-data)))
-                    (setq next-match-data (list match-start field-name-for-prefix (length prefix-str)))))))
+      (message "PARSE-OUTPUT: WHILE iter #%d, current_pos: %d" loop-count current-pos)
+      (let ((match-info (dsel--find-earliest-matching-prefix llm-response-string current-pos output-field-plists)))
+        (if match-info
+            (let* ((matched-field-plist (nth 0 match-info))
+                   (prefix-start-idx (nth 1 match-info))
+                   (actual-prefix-end-idx (nth 2 match-info))
+                   (field-name (plist-get matched-field-plist :name))
+                   extraction-result raw-value new-pos)
 
-          (if next-match-data
-              (let* ((field-start-pos (car next-match-data))
-                     (field-name (cadr next-match-data))
-                     (prefix-len (caddr next-match-data))
-                     (value-start-pos (+ field-start-pos prefix-len))
-                     (value-end-pos (length llm-response-string)) ; Default to end of string
-                     (raw-value nil))
+              (message "PARSE-OUTPUT: Found field '%s' starting at index %d (prefix ends at %d)."
+                       field-name prefix-start-idx actual-prefix-end-idx)
 
-                ;; If there was a previous field, its value ends where this one starts
-                (when (and parsed-fields-alist
-                           (null (assoc field-name parsed-fields-alist))) ; Avoid re-processing due to unordered LLM output
-                  ;; This logic is complex if LLM reorders fields.
-                  ;; For now, assume this means we found the *next* field for the previous one.
-                  ;; A simpler model: the value of a field is from its prefix to the next known prefix or EOS.
-                  )
+              ;; If prefix isn't at current-pos, there's unparsed text. For now, we skip it and advance.
+              ;; A more robust parser might handle this "inter-field" text.
+              (when (> prefix-start-idx current-pos)
+                (message "PARSE-OUTPUT: Skipping unparsed text from %d to %d: '%s'"
+                         current-pos prefix-start-idx
+                         (substring llm-response-string current-pos prefix-start-idx))
+                (setq current-pos prefix-start-idx))
 
 
-                ;; Find the end of the current field's value
-                ;; It ends either at the start of the *next* different prefix, or end of string
-                (let ((next-value-search-start value-start-pos))
-                  (dolist (next-prefix-info prefix-map)
-                    (let* ((next-prefix-str (car next-prefix-info))
-                           (next-field-name (cdr next-prefix-info)))
-                      ;; Only consider it a delimiter if it's a *different* field's prefix
-                      (unless (eq field-name next-field-name)
-                        (let ((next-prefix-match-pos (string-match (regexp-quote next-prefix-str)
-                                                                   llm-response-string
-                                                                   next-value-search-start)))
-                          (when next-prefix-match-pos
-                            (setq value-end-pos (min value-end-pos next-prefix-match-pos))))))))
+              (setq extraction-result (dsel--extract-raw-value-and-next-pos
+                                       llm-response-string
+                                       matched-field-plist
+                                       actual-prefix-end-idx ; value_start_idx
+                                       output-field-plists))
+              (setq raw-value (car extraction-result)
+                    new-pos (cadr extraction-result))
 
-                (setq raw-value (string-trim (substring llm-response-string value-start-pos value-end-pos)))
-                (push (cons field-name raw-value) parsed-fields-alist)
+              (message "PARSE-OUTPUT: Field '%s' raw value: %S. Next search will start at: %d"
+                       field-name raw-value new-pos)
+              (puthash field-name raw-value raw-parsed-fields)
+              (setq current-pos new-pos))
 
-                ;; Advance current-pos to the end of this extracted field's value
-                ;; This is where it gets tricky if we want to re-scan for out-of-order fields.
-                ;; A simpler model for now: advance past this found field.
-                (setq current-pos value-end-pos)
+          ;; ELSE: No more known prefixes found
+          (progn
+            (message "PARSE-OUTPUT: No more known prefixes found from pos %d. Exiting WHILE loop." current-pos)
+            (setq current-pos (length llm-response-string)))))) ; Force loop termination
 
-                ;; If we set current_pos to value_end_pos, and value_end_pos was determined by the start
-                ;; of the *next* prefix, the next loop iteration will re-find that next prefix.
-                ;; If value_end_pos was (length llm-response-string), the loop terminates.
-                )
-            (setq current-pos (length llm-response-string)) ; No more known prefixes found
-            )))
-      ) ; End of while and outer let*
+    (message "PARSE-OUTPUT: Loop finished. Final current_pos: %d. Parsed intermediate: %S" current-pos raw-parsed-fields)
 
-    ;; 3. Coerce and validate based on signature
-    (let ((final-result nil))
-      (dolist (field-plist output-field-plists)
-        (let* ((field-name (plist-get field-plist :name))
-               (field-optional (plist-get field-plist :optional))
-               (raw-value-pair (assq field-name parsed-fields-alist))
-               (raw-value (if raw-value-pair (cdr raw-value-pair) nil)))
-
-          (if raw-value
-              (let ((coerced-value (dsel--coerce-value raw-value field-plist)))
-                (push (cons field-name coerced-value) final-result))
-            (unless field-optional
-              (message "Warning: Required output field '%s' was not found in LLM response." field-name)))))
-      (nreverse final-result))))
+    ;; Pass 2: Coerce values and handle optional/required
+    (dolist (field-plist output-field-plists)
+      (let* ((field-name (plist-get field-plist :name))
+             (field-optional (plist-get field-plist :optional))
+             (raw-value (gethash field-name raw-parsed-fields)))
+        (if raw-value
+            (let ((coerced-value (dsel--coerce-value raw-value field-plist)))
+              (if (or coerced-value (eq coerced-value t) (eq coerced-value nil) (stringp coerced-value))
+                  (push (cons field-name coerced-value) final-result-alist)
+                (message "PARSE-OUTPUT: Coerced value for '%s' was nil and not added (type: %s, raw: %S)"
+                         field-name (plist-get field-plist :type) raw-value)))
+          (unless field-optional
+            (error "Required output field '%s' was not found in LLM response" field-name)))))
+    (nreverse final-result-alist)))
 
 (defun dsel--coerce-value (string-value field-plist)
   "Coerce STRING-VALUE according to the type specified in FIELD-PLIST.
@@ -239,25 +263,33 @@ Handles enhanced field types including enum, array, and object."
                  trimmed-value enum-values (plist-get field-plist :name)))))
      ((eq type 'string) string-value)
      ((eq type 'integer)
-      (let ((num (string-to-number string-value)))
-        ;; Check if conversion worked - string-to-number returns 0 for invalid input
-        (if (or (string-match-p "^\\s*0+\\s*$" string-value)  ; It's actually "0"
-                (not (zerop num)))                            ; Or conversion worked
-            num
-          (if (plist-get field-plist :name)
-              (error "Invalid integer format '%s' for field '%s'"
-                     string-value (plist-get field-plist :name))
-            string-value))))
+      (let ((trimmed (string-trim string-value)))
+        (cond
+         ;; Empty string - return it as-is for empty fields
+         ((string= "" trimmed) trimmed)
+         (t (let ((num (string-to-number trimmed)))
+              ;; Check if conversion worked - string-to-number returns 0 for invalid input
+              (if (or (string-match-p "^\\s*0+\\s*$" trimmed)  ; It's actually "0"
+                      (not (zerop num)))                       ; Or conversion worked
+                  num
+                (if (plist-get field-plist :name)
+                    (error "Invalid integer format '%s' for field '%s'"
+                           trimmed (plist-get field-plist :name))
+                  trimmed)))))))
      ((eq type 'number)
-      (let ((num (string-to-number string-value)))
-        ;; Check if conversion worked - string-to-number returns 0 for invalid input
-        (if (or (string-match-p "^\\s*0+\\s*$" string-value)  ; It's actually "0"
-                (not (zerop num)))                            ; Or conversion worked
-            num
-          (if (plist-get field-plist :name)
-              (error "Invalid number format '%s' for field '%s'"
-                     string-value (plist-get field-plist :name))
-            string-value))))
+      (let ((trimmed (string-trim string-value)))
+        (cond
+         ;; Empty string - return it as-is for empty fields
+         ((string= "" trimmed) trimmed)
+         (t (let ((num (string-to-number trimmed)))
+              ;; Check if conversion worked - string-to-number returns 0 for invalid input
+              (if (or (string-match-p "^\\s*0+\\s*$" trimmed)  ; It's actually "0"
+                      (not (zerop num)))                       ; Or conversion worked
+                  num
+                (if (plist-get field-plist :name)
+                    (error "Invalid number format '%s' for field '%s'"
+                           trimmed (plist-get field-plist :name))
+                  trimmed)))))))
      ((eq type 'boolean)
       (cond
        ((string-match-p "\\`\\(?:t\\|true\\|yes\\)\\'" (downcase string-value)) t)
