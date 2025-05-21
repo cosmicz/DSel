@@ -111,16 +111,18 @@ The first match is used. Tests can `let`-bind this.")
 
 ;; Run tests
 
-(defun dsel-run-tests ()
-  "Run all DSel tests interactively."
+(defun dsel-run-tests (&optional selector)
+  "Run DSel tests interactively matching SELECTOR.
+If SELECTOR is nil, run all tests matching \"^dsel-test-\"."
   (interactive)
   (dsel-setup-test-environment)
-  (ert-run-tests-interactively "^dsel-test-"))
+  (ert-run-tests-interactively (or selector "^dsel-test-")))
 
-(defun dsel-run-tests-batch ()
-  "Run all DSel tests in batch mode."
+(defun dsel-run-tests-batch (&optional selector)
+  "Run DSel tests in batch mode matching SELECTOR.
+If SELECTOR is nil, run all tests matching \"^dsel-test-\"."
   (dsel-setup-test-environment)
-  (ert-run-tests-batch-and-exit "^dsel-test-"))
+  (ert-run-tests-batch-and-exit (or selector "^dsel-test-")))
 
 (provide 'dsel-tests-runner)
 ;;; dsel-tests-runner.el ends here
