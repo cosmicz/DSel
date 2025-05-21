@@ -42,7 +42,7 @@
 (ert-deftest dsel-test-array-validation ()
   "Test validation of array fields."
   ;; Arrays require :items
-  (should-error 
+  (should-error
    (dsel-make-signature
     "Test array validation"
     :input-fields (list '(:name tags :type array :desc "Tags without items")))
@@ -67,8 +67,8 @@
                              :type array
                              :desc "3D matrix of numbers"
                              :items (:type array
-                                       :items (:type array
-                                                     :items (:type number))))))))
+                                           :items (:type array
+                                                         :items (:type number))))))))
     (let* ((matrix-field (dsel-signature-get-output-field sig 'matrix))
            (level1-items (plist-get matrix-field :items))
            (level2-items (plist-get level1-items :items))
@@ -89,22 +89,22 @@
                              :type object
                              :desc "User record"
                              :properties ((:name name :type string :desc "Full name")
-                                      (:name contact
-                                             :type object
-                                             :desc "Contact information"
-                                             :properties ((:name email :type string :desc "Email address")
-                                                      (:name phone :type string :desc "Phone number")
-                                                      (:name address
-                                                             :type object
-                                                             :desc "Physical address"
-                                                             :properties ((:name street :type string :desc "Street")
-                                                                      (:name city :type string :desc "City")
-                                                                      (:name country :type string :desc "Country")))))
-                                      (:name stats
-                                             :type object
-                                             :desc "User statistics"
-                                             :properties ((:name joined :type string :desc "Join date")
-                                                      (:name last-login :type string :desc "Last login date"))))
+                                          (:name contact
+                                                 :type object
+                                                 :desc "Contact information"
+                                                 :properties ((:name email :type string :desc "Email address")
+                                                              (:name phone :type string :desc "Phone number")
+                                                              (:name address
+                                                                     :type object
+                                                                     :desc "Physical address"
+                                                                     :properties ((:name street :type string :desc "Street")
+                                                                                  (:name city :type string :desc "City")
+                                                                                  (:name country :type string :desc "Country")))))
+                                          (:name stats
+                                                 :type object
+                                                 :desc "User statistics"
+                                                 :properties ((:name joined :type string :desc "Join date")
+                                                              (:name last-login :type string :desc "Last login date"))))
                              :required (name))))))
     (let* ((user-field (dsel-signature-get-output-field sig 'user))
            (properties (plist-get user-field :properties))
@@ -187,77 +187,6 @@
       (should (eq 'integer (plist-get priority-field :type)))
       (should (equal [1 2 3 4 5] (plist-get priority-field :enum))))))
 
-;;; Tests for Mixed and Complex Types
-
-;; (ert-deftest dsel-test-complex-mixed-types ()
-;;   "Test a complex structure with mixed types."
-;;   (let* ((sig (dsel-make-signature
-;;                "Test complex mixed types"
-;;                :output-fields
-;;                (list '(:name search-results
-;;                       :type object
-;;                       :desc "Search results"
-;;                       :properties ((:name query :type string :desc "Search query")
-;;                                   (:name filters
-;;                                    :type array
-;;                                    :desc "Applied filters"
-;;                                    :items (:type object
-;;                                            :properties ((:name name :type string :desc "Filter name")
-;;                                                        (:name value :type string :desc "Filter value"))))
-;;                                   (:name results
-;;                                    :type array
-;;                                    :desc "Results list"
-;;                                    :items (:type object
-;;                                            :properties ((:name id :type string :desc "Result ID")
-;;                                                        (:name title :type string :desc "Result title")
-;;                                                        (:name status
-;;                                                         :type string
-;;                                                         :desc "Result status"
-;;                                                         :enum ["active" "archived"])
-;;                                                        (:name metadata
-;;                                                         :type object
-;;                                                         :desc "Additional metadata"
-;;                                                         :properties ((:name created :type string :desc "Created date")
-;;                                                                     (:name modified :type string :desc "Modified date")
-;;                                                                     (:name tags
-;;                                                                      :type array
-;;                                                                      :desc "Tags"
-;;                                                                      :items (:type string)))))))
-;;                                   (:name pagination
-;;                                    :type object
-;;                                    :desc "Pagination information"
-;;                                    :properties ((:name page :type integer :desc "Current page")
-;;                                               (:name total-pages :type integer :desc "Total pages")
-;;                                               (:name total-results :type integer :desc "Total results"))))
-;;                       :required (query results))))))
-;;   ;; Testing the structure at various levels
-;;   (let* ((search-field (dsel-signature-get-output-field sig 'search-results))
-;;          (props (plist-get search-field :properties))
-;;          (results-field (dsel-get-field-by-name props 'results))
-;;          (results-items (plist-get results-field :items))
-;;          (results-props (plist-get results-items :properties))
-;;          (metadata-field (dsel-get-field-by-name results-props 'metadata)))
-
-;;     ;; Top level
-;;     (should (eq 'object (plist-get search-field :type)))
-;;     (should (equal '(query results) (plist-get search-field :required)))
-
-;;     ;; Results array
-;;     (should (eq 'array (plist-get results-field :type)))
-
-;;     ;; Result status enum
-;;     (let ((status-field (dsel-get-field-by-name results-props 'status)))
-;;       (should (eq 'string (plist-get status-field :type)))
-;;       (should (equal ["active" "archived"] (plist-get status-field :enum))))
-
-;;     ;; Metadata object
-;;     (should (eq 'object (plist-get metadata-field :type)))
-
-;;     ;; Tags array in metadata
-;;     (let* ((metadata-props (plist-get metadata-field :properties))
-;;            (tags-field (dsel-get-field-by-name metadata-props 'tags)))
-;;       (should (eq 'array (plist-get tags-field :type)))
-;;       (should (eq 'string (plist-get (plist-get tags-field :items) :type))))))
 
 ;;; Tests for Field Formatting
 
@@ -286,6 +215,93 @@
 
       (let ((upper-field (dsel-get-field-by-name fields 'UPPERCASE_NAME)))
         (should (string= "Uppercase_Name:" (plist-get upper-field :prefix)))))))
+
+;;; Integration Tests for End-to-End Flow
+
+(ert-deftest dsel-test-integration-complex-signature ()
+  "Test end-to-end flow with a complex signature including nested objects and arrays."
+  (let* ((sig (dsel-make-signature
+               "Analyze product data with nested structure"
+               :input-fields (list '(:name query :type string :desc "Search query"))
+               :output-fields
+               (list '(:name product
+                             :type object
+                             :desc "Product details"
+                             :properties ((:name name :type string :desc "Product name")
+                                          (:name price :type number :desc "Product price")
+                                          (:name available :type boolean :desc "Is available")
+                                          (:name categories
+                                                 :type array
+                                                 :desc "Product categories"
+                                                 :items (:type string))
+                                          (:name metadata
+                                                 :type object
+                                                 :desc "Additional metadata"
+                                                 :properties ((:name created_at :type string :desc "Creation date")
+                                                              (:name rating :type number :desc "Product rating")
+                                                              (:name tags
+                                                                     :type array
+                                                                     :desc "Product tags"
+                                                                     :items (:type string)))))))))
+         ;; Create predictor
+         (predictor (dsel-make-predict sig :lm dsel-test-llm-provider))
+
+         ;; Mock the LLM response with a complex structure
+         ;; Note: Using format-input-fields to generate the correct key for our mock response
+         (mock-response "Product:
+{
+  \"name\": \"Premium Coffee Maker\",
+  \"price\": 129.99,
+  \"available\": true,
+  \"categories\": [\"Kitchen\", \"Appliances\", \"Coffee\"],
+  \"metadata\": {
+    \"created_at\": \"2025-03-15\",
+    \"rating\": 4.8,
+    \"tags\": [\"best-seller\", \"premium\", \"stainless-steel\"]
+  }
+}")
+         (dsel-test-llm-prompt-to-response-map
+          `((,(dsel--format-input-fields sig '((query . "coffee maker"))) . ,mock-response)))
+
+         ;; Run the prediction
+         (prediction (dsel-forward predictor :query "coffee maker")))
+
+    ;; Test the prediction result
+    (should (dsel-prediction-p prediction))
+
+    ;; Test input is preserved
+    (should (string= (dsel-get-field prediction 'query) "coffee maker"))
+
+    ;; Access top-level product object
+    (let ((product (dsel-get-field prediction 'product)))
+      (should (listp product))
+
+      ;; Test basic fields
+      (should (string= (alist-get 'name product) "Premium Coffee Maker"))
+      (should (= (alist-get 'price product) 129.99))
+      (should (eq (alist-get 'available product) t))
+
+      ;; Test array field
+      (let ((categories (alist-get 'categories product)))
+        (should (vectorp categories))
+        (should (= (length categories) 3))
+        (should (string= (aref categories 0) "Kitchen"))
+        (should (string= (aref categories 1) "Appliances"))
+        (should (string= (aref categories 2) "Coffee")))
+
+      ;; Test nested object
+      (let ((metadata (alist-get 'metadata product)))
+        (should (listp metadata))
+        (should (string= (alist-get 'created_at metadata) "2025-03-15"))
+        (should (= (alist-get 'rating metadata) 4.8))
+
+        ;; Test nested array in object
+        (let ((tags (alist-get 'tags metadata)))
+          (should (vectorp tags))
+          (should (= (length tags) 3))
+          (should (string= (aref tags 0) "best-seller"))
+          (should (string= (aref tags 1) "premium"))
+          (should (string= (aref tags 2) "stainless-steel")))))))
 
 (provide 'dsel-complex-types-tests)
 ;;; dsel-complex-types-tests.el ends here
