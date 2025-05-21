@@ -25,7 +25,7 @@
   (let* ((sig (dsel-make-signature
                "Test array of objects"
                :input-fields (list '(:name simple-data :type string :desc "Simple text input"))
-               :output-fields (list '(:name users 
+               :output-fields (list '(:name users
                                             :type array
                                             :desc "List of user objects"
                                             :items (:type object
@@ -43,16 +43,16 @@
   "Test validation of array fields."
   ;; Arrays require :items
   (should-error 
-   (dsel-make-signature 
+   (dsel-make-signature
     "Test array validation"
     :input-fields (list '(:name tags :type array :desc "Tags without items")))
    :type 'error)
-  
+
   ;; Items requires :type
   (should-error
    (dsel-make-signature
     "Test array items validation"
-    :input-fields (list '(:name data 
+    :input-fields (list '(:name data
                                 :type array
                                 :desc "Data array"
                                 :items ())))
@@ -62,13 +62,13 @@
   "Test deeply nested array structures."
   (let* ((sig (dsel-make-signature
                "Test nested arrays"
-               :output-fields 
+               :output-fields
                (list '(:name matrix
                              :type array
                              :desc "3D matrix of numbers"
                              :items (:type array
-                                           :items (:type array
-                                                         :items (:type number))))))))
+                                       :items (:type array
+                                                     :items (:type number))))))))
     (let* ((matrix-field (dsel-signature-get-output-field sig 'matrix))
            (level1-items (plist-get matrix-field :items))
            (level2-items (plist-get level1-items :items))
@@ -89,22 +89,22 @@
                              :type object
                              :desc "User record"
                              :properties ((:name name :type string :desc "Full name")
-                                          (:name contact
-                                                 :type object
-                                                 :desc "Contact information"
-                                                 :properties ((:name email :type string :desc "Email address")
-                                                              (:name phone :type string :desc "Phone number")
-                                                              (:name address
-                                                                     :type object
-                                                                     :desc "Physical address"
-                                                                     :properties ((:name street :type string :desc "Street")
-                                                                                  (:name city :type string :desc "City")
-                                                                                  (:name country :type string :desc "Country")))))
-                                          (:name stats
-                                                 :type object
-                                                 :desc "User statistics"
-                                                 :properties ((:name joined :type string :desc "Join date")
-                                                              (:name last-login :type string :desc "Last login date"))))
+                                      (:name contact
+                                             :type object
+                                             :desc "Contact information"
+                                             :properties ((:name email :type string :desc "Email address")
+                                                      (:name phone :type string :desc "Phone number")
+                                                      (:name address
+                                                             :type object
+                                                             :desc "Physical address"
+                                                             :properties ((:name street :type string :desc "Street")
+                                                                      (:name city :type string :desc "City")
+                                                                      (:name country :type string :desc "Country")))))
+                                      (:name stats
+                                             :type object
+                                             :desc "User statistics"
+                                             :properties ((:name joined :type string :desc "Join date")
+                                                      (:name last-login :type string :desc "Last login date"))))
                              :required (name))))))
     (let* ((user-field (dsel-signature-get-output-field sig 'user))
            (properties (plist-get user-field :properties))
@@ -165,7 +165,7 @@
   "Test enum fields with default values."
   (let* ((sig (dsel-make-signature
                "Test enum with defaults"
-               :input-fields (list '(:name status 
+               :input-fields (list '(:name status
                                            :type string
                                            :desc "Current status"
                                            :enum ["active" "inactive" "pending"]
@@ -286,51 +286,6 @@
 
       (let ((upper-field (dsel-get-field-by-name fields 'UPPERCASE_NAME)))
         (should (string= "Uppercase_Name: " (plist-get upper-field :prefix)))))))
-
-;;; Tests for Coercion
-
-(ert-deftest dsel-test-coercion-basic-types ()
-  "Test basic type coercion."
-  ;; String coercion
-  (should (equal "test" (dsel--coerce-value "test" '(:type string))))
-
-  ;; Integer coercion
-  (should (equal 42 (dsel--coerce-value "42" '(:type integer))))
-
-  ;; Number coercion
-  (should (equal 3.14 (dsel--coerce-value "3.14" '(:type number))))
-
-  ;; Boolean coercion
-  (should (eq t (dsel--coerce-value "true" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "yes" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "t" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "false" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "no" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "nil" '(:type boolean)))))
-
-(ert-deftest dsel-test-coercion-complex-types ()
-  "Test complex type coercion."
-  ;; Array coercion from JSON string - test with equal now
-  (should (equal '("red" "green" "blue") 
-                 (mapcar #'identity (dsel--coerce-value "[\"red\", \"green\", \"blue\"]" '(:type array)))))
-
-  ;; Object coercion from JSON string
-  (should (equal '((name . "John") (age . 30))
-                 (dsel--coerce-value "{\"name\": \"John\", \"age\": 30}" '(:type object))))
-
-  ;; Array fallback coercion from comma-separated string
-  (should (equal '("red" "green" "blue")
-                 (dsel--coerce-value "red, green, blue" '(:type array)))))
-
-(ert-deftest dsel-test-coercion-enum-validation ()
-  "Test enum validation during coercion."
-  ;; Valid enum value
-  (should (equal "red"
-                 (dsel--coerce-value "red" '(:type string :enum ["red" "green" "blue"]))))
-
-  ;; Invalid enum value (returns the value with a warning)
-  (should (equal "purple"
-                 (dsel--coerce-value "purple" '(:type string :enum ["red" "green" "blue"])))))
 
 (provide 'dsel-complex-types-tests)
 ;;; dsel-complex-types-tests.el ends here

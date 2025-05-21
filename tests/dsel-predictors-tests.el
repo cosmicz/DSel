@@ -83,4 +83,4 @@
       (should (string= (dsel-get-field second-demo 'output) "result2")))))
 
 (provide 'dsel-predictors-tests)
-;;; dsel-predictors-tests.el ends heree
+;;; dsel-predictors-tests.el ends here

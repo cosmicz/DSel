@@ -235,24 +235,49 @@ Handles enhanced field types including enum, array, and object."
       (let ((trimmed-value (string-trim string-value)))
         (if (and (vectorp enum-values) (cl-find trimmed-value enum-values :test #'string=))
             trimmed-value
-          (progn
-            (message "Warning: Value '%s' not in enum %s for field '%s'. Returning raw value."
-                     trimmed-value enum-values (plist-get field-plist :name))
-            trimmed-value))))
+          (error "Value '%s' not in enum %s for field '%s'"
+                 trimmed-value enum-values (plist-get field-plist :name)))))
      ((eq type 'string) string-value)
-     ((eq type 'integer) (condition-case nil (string-to-number string-value) (error string-value)))
-     ((eq type 'number) (condition-case nil (string-to-number string-value) (error string-value)))
+     ((eq type 'integer)
+      (let ((num (string-to-number string-value)))
+        ;; Check if conversion worked - string-to-number returns 0 for invalid input
+        (if (or (string-match-p "^\\s*0+\\s*$" string-value)  ; It's actually "0"
+                (not (zerop num)))                            ; Or conversion worked
+            num
+          (if (plist-get field-plist :name)
+              (error "Invalid integer format '%s' for field '%s'"
+                     string-value (plist-get field-plist :name))
+            string-value))))
+     ((eq type 'number)
+      (let ((num (string-to-number string-value)))
+        ;; Check if conversion worked - string-to-number returns 0 for invalid input
+        (if (or (string-match-p "^\\s*0+\\s*$" string-value)  ; It's actually "0"
+                (not (zerop num)))                            ; Or conversion worked
+            num
+          (if (plist-get field-plist :name)
+              (error "Invalid number format '%s' for field '%s'"
+                     string-value (plist-get field-plist :name))
+            string-value))))
      ((eq type 'boolean)
       (cond
        ((string-match-p "\\`\\(?:t\\|true\\|yes\\)\\'" (downcase string-value)) t)
        ((string-match-p "\\`\\(?:nil\\|false\\|no\\)\\'" (downcase string-value)) nil)
        (t nil)))
      ((eq type 'array)
-      (condition-case nil (json-read-from-string string-value) ; Use json-read for vectors
-        (error (mapcar #'string-trim (split-string string-value "," t)))))
+      (condition-case err
+          (json-read-from-string string-value) ; Use json-read for vectors
+        (error
+         ;; Try comma-separated format before giving up
+         (if (string-match-p "," string-value)
+             (mapcar #'string-trim (split-string string-value "," t))
+           (error "Invalid array format '%s' for field '%s': %s"
+                  string-value (plist-get field-plist :name) (error-message-string err))))))
      ((eq type 'object)
-      (condition-case nil (json-read-from-string string-value) ; json-read uses alist for objects
-        (error string-value)))
+      (condition-case err
+          (json-read-from-string string-value) ; json-read uses alist for objects
+        (error
+         (error "Invalid object format '%s' for field '%s': %s"
+                string-value (plist-get field-plist :name) (error-message-string err)))))
      (t string-value))))
 
 (provide 'dsel-adapter)
