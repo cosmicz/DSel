@@ -1,8 +1,8 @@
 ;;; dsel-macros.el --- Definition macros for DSel  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024
+;; Copyright (C) 2025
 
-;; Author: 
+;; Author: Cosmin-Octavian C. (cosmicz)
 ;; Keywords: llm, tools
 
 ;; This file is not part of GNU Emacs.

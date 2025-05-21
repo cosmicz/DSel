@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2024
 
-;; Author: 
+;; Author: Cosmin-Octavian C. (cosmicz)
 ;; Keywords: llm, tools
 
 ;; This file is not part of GNU Emacs.

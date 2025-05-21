@@ -1,5 +1,10 @@
 ;;; dsel-optimizers-tests.el --- Tests for dsel optimizers  -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2025
+
+;; Author: Cosmin-Octavian C. (cosmicz)
+;; Keywords: llm, tools
+
 ;; This file is not part of GNU Emacs.
 
 ;;; Commentary:

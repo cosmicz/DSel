@@ -1,8 +1,8 @@
 ;;; dsel.el --- DSPy-inspired framework for Large Language Models  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024
+;; Copyright (C) 2025
 
-;; Author: 
+;; Author: Cosmin-Octavian C. (cosmicz)
 ;; Keywords: llm, tools
 ;; Package-Requires: ((emacs "28.1") (llm "0.1"))
 ;; Version: 0.1.0
