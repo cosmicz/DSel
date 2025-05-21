@@ -25,8 +25,9 @@
 (cl-defstruct (dsel-default-chat-adapter (:include dsel-adapter))
   "Default chat adapter implementation for llm.el chat interfaces.")
 
-(cl-defgeneric dsel-adapter-format-prompt (adapter signature demos current-inputs-alist)
+(cl-defgeneric dsel-adapter-format-prompt (adapter signature demos current-inputs-alist &optional config)
   "Format a prompt for the given ADAPTER using SIGNATURE, DEMOS and CURRENT-INPUTS-ALIST.
+CONFIG is an optional plist with LLM-specific configuration options.
 Return an llm-chat-prompt structure.")
 
 (cl-defgeneric dsel-adapter-parse-output (adapter signature llm-response-string)
@@ -61,7 +62,7 @@ FIELD-PLIST is a property list with :name, :type, etc."
                           field-properties ", "))))))
 
 (cl-defmethod dsel-adapter-format-prompt ((adapter dsel-default-chat-adapter)
-                                          signature demos current-inputs-alist)
+                                          signature demos current-inputs-alist &optional config)
   "Format a chat prompt for the default adapter.
 SIGNATURE is a `dsel-signature'.
 DEMOS is a list of `dsel-example'.
@@ -90,13 +91,18 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
            "\n")))
         (current-input-content
          (dsel--format-input-fields signature current-inputs-alist)))
-    (llm-make-chat-prompt
-     current-input-content
-     :context system-prompt
-     :examples (cl-loop for demo in demos
-                        collect (cons
-                                 (dsel--format-input-fields signature (dsel-example-inputs demo))
-                                 (dsel--format-output-fields signature (dsel-example-labels demo)))))))
+    (apply #'llm-make-chat-prompt
+           current-input-content
+           :context system-prompt
+           :examples (cl-loop for demo in demos
+                              collect (cons
+                                       (dsel--format-input-fields signature (dsel-example-inputs demo))
+                                       (dsel--format-output-fields signature (dsel-example-labels demo))))
+           ;; Add any provided config options as additional keyword args
+           (when config
+             (cl-loop for (key value) on config by #'cddr
+                      collect key
+                      collect value)))))
 
 (defun dsel--format-input-fields (signature inputs-alist)
   "Format the INPUTS-ALIST according to the SIGNATURE's input field definitions."

@@ -45,14 +45,14 @@
                 (when (and key value)
                   (push (cons (dsel-keyword-to-symbol key) value) inputs))))
             (nreverse inputs)))
-
+         (merged-config (or (dsel-predict-config predict) nil))
          (llm-prompt (dsel-adapter-format-prompt
                       adapter-to-use
                       (dsel-predict-signature predict)
                       (dsel-predict-demos predict)
-                      current-inputs-alist))
-         (merged-config (or (dsel-predict-config predict) nil))
-         (raw-llm-response (llm-chat lm-to-use llm-prompt merged-config))
+                      current-inputs-alist
+                      merged-config))
+         (raw-llm-response (llm-chat lm-to-use llm-prompt))  ;; TODO: might need multi-output for tool use
          (parsed-outputs-alist
           (dsel-adapter-parse-output
            adapter-to-use
