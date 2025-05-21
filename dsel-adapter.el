@@ -17,6 +17,7 @@
 (require 'cl-lib)
 (require 'llm)
 (require 'dsel-types)
+(require 'dsel-settings)
 (require 'json)
 
 (cl-defstruct dsel-adapter
@@ -190,16 +191,16 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
         (current-pos 0)
         (loop-count 0))
 
-    (message "PARSE-OUTPUT: START. Response length: %d. Response: %S" (length llm-response-string) llm-response-string)
+    (dsel--log 'debug "PARSE-OUTPUT: START. Response length: %d. Response: %S" (length llm-response-string) llm-response-string)
 
     (while (< current-pos (length llm-response-string))
       (setq loop-count (1+ loop-count))
       (when (> loop-count (+ 5 (* 2 (length output-field-plists))))
-        (message "PARSE-OUTPUT: ERROR - Loop guard hit (%d loops). Pos: %d. Aborting." loop-count current-pos)
+        (dsel--log 'error "PARSE-OUTPUT: ERROR - Loop guard hit (%d loops). Pos: %d. Aborting." loop-count current-pos)
         (error "Parser loop stuck (guard hit)")
         (cl-return)) ; Should not be reached due to error
 
-      (message "PARSE-OUTPUT: WHILE iter #%d, current_pos: %d" loop-count current-pos)
+      (dsel--log 'debug "PARSE-OUTPUT: WHILE iter #%d, current_pos: %d" loop-count current-pos)
       (let ((match-info (dsel--find-earliest-matching-prefix llm-response-string current-pos output-field-plists)))
         (if match-info
             (let* ((matched-field-plist (nth 0 match-info))
@@ -208,15 +209,15 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
                    (field-name (plist-get matched-field-plist :name))
                    extraction-result raw-value new-pos)
 
-              (message "PARSE-OUTPUT: Found field '%s' starting at index %d (prefix ends at %d)."
-                       field-name prefix-start-idx actual-prefix-end-idx)
+              (dsel--log 'debug "PARSE-OUTPUT: Found field '%s' starting at index %d (prefix ends at %d)."
+                         field-name prefix-start-idx actual-prefix-end-idx)
 
               ;; If prefix isn't at current-pos, there's unparsed text. For now, we skip it and advance.
               ;; A more robust parser might handle this "inter-field" text.
               (when (> prefix-start-idx current-pos)
-                (message "PARSE-OUTPUT: Skipping unparsed text from %d to %d: '%s'"
-                         current-pos prefix-start-idx
-                         (substring llm-response-string current-pos prefix-start-idx))
+                (dsel--log 'debug "PARSE-OUTPUT: Skipping unparsed text from %d to %d: '%s'"
+                           current-pos prefix-start-idx
+                           (substring llm-response-string current-pos prefix-start-idx))
                 (setq current-pos prefix-start-idx))
 
 
@@ -228,17 +229,17 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
               (setq raw-value (car extraction-result)
                     new-pos (cadr extraction-result))
 
-              (message "PARSE-OUTPUT: Field '%s' raw value: %S. Next search will start at: %d"
-                       field-name raw-value new-pos)
+              (dsel--log 'debug "PARSE-OUTPUT: Field '%s' raw value: %S. Next search will start at: %d"
+                         field-name raw-value new-pos)
               (puthash field-name raw-value raw-parsed-fields)
               (setq current-pos new-pos))
 
           ;; ELSE: No more known prefixes found
           (progn
-            (message "PARSE-OUTPUT: No more known prefixes found from pos %d. Exiting WHILE loop." current-pos)
+            (dsel--log 'debug "PARSE-OUTPUT: No more known prefixes found from pos %d. Exiting WHILE loop." current-pos)
             (setq current-pos (length llm-response-string)))))) ; Force loop termination
 
-    (message "PARSE-OUTPUT: Loop finished. Final current_pos: %d. Parsed intermediate: %S" current-pos raw-parsed-fields)
+    (dsel--log 'debug "PARSE-OUTPUT: Loop finished. Final current_pos: %d. Parsed intermediate: %S" current-pos raw-parsed-fields)
 
     ;; Pass 2: Coerce values and handle optional/required
     (dolist (field-plist output-field-plists)
@@ -249,8 +250,8 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
             (let ((coerced-value (dsel--coerce-value raw-value field-plist)))
               (if (or coerced-value (eq coerced-value t) (eq coerced-value nil) (stringp coerced-value))
                   (push (cons field-name coerced-value) final-result-alist)
-                (message "PARSE-OUTPUT: Coerced value for '%s' was nil and not added (type: %s, raw: %S)"
-                         field-name (plist-get field-plist :type) raw-value)))
+                (dsel--log 'warning "PARSE-OUTPUT: Coerced value for '%s' was nil and not added (type: %s, raw: %S)"
+                           field-name (plist-get field-plist :type) raw-value)))
           (unless field-optional
             (error "Required output field '%s' was not found in LLM response" field-name)))))
     (nreverse final-result-alist)))

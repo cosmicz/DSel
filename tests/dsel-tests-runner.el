@@ -91,13 +91,14 @@ The first match is used. Tests can `let`-bind this.")
   "Setup the test environment for DSel."
   (setq max-lisp-eval-depth 1000
         print-level 1000
-        print-length 1000
-        print-right-margin 1000)
+        print-length 1000)
   (setq dsel-test-llm-provider (make-llm-fake
                                 :output-to-buffer "*dsel-test-llm-fake-output-buffer*"
                                 :chat-action-func dsel-test-llm-chat-response))
   (dsel-configure :lm dsel-test-llm-provider
-                  :adapter (make-dsel-default-chat-adapter))
+                  :adapter (make-dsel-default-chat-adapter)
+                  :log-level 'debug
+                  :log-to-messages t)
   (message "DSel test environment setup complete."))
 
 ;; Load test files
