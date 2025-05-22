@@ -1,147 +1,337 @@
-#+TITLE: DSel (Diesel)
-#+AUTHOR: 
-#+DATE: 2024
+#+TITLE: DSel: DSPy-inspired LLM Framework for Emacs Lisp
+#+AUTHOR: Cosmin-Octavian C. (cosmicz)
+#+DATE: 2025
 
 * Overview
 
-DSel is a DSPy-inspired framework for Emacs Lisp that provides a structured way to build applications powered by Large Language Models (LLMs). It leverages the existing =llm.el= library for backend LLM interactions.
+DSel is a declarative, modular, and optimizable framework for working with Large Language Models (LLMs) in Emacs Lisp.
+Inspired by Python's DSPy, it provides a structured approach to building LLM-powered applications with type checking, schema validation, and optimization capabilities.
 
-* Features
+DSel leverages the existing =llm.el= library for backend LLM interactions while adding powerful abstractions for creating robust LLM applications.
 
-- *Declarative Signatures*: Define LLM tasks using structured "signatures"
-- *Modular Programs*: Compose simple modules into complex applications
-- *Native Optimization*: Use native Elisp optimizers to improve LLM performance
-- *Leverage llm.el*: Built on top of the existing =llm.el= infrastructure
-- *Elisp Idioms*: Uses familiar Elisp structures and conventions
+* Philosophy
+
+DSel is built around several key principles:
+
+- *Declarative Signatures*: Focus on /what/ you want from the LLM, not /how/ to get it
+- *Modular Programs*: Compose complex behaviors from simple, reusable components
+- *Native Optimization*: Improve LLM behavior with data-driven refinements
+- *Emacs Integration*: Seamless integration with the Emacs ecosystem
+
+* Core Concepts
+
+** Signature (=dsel-signature=)
+A schema that defines the inputs and outputs for an LLM task, along with instructions.
+
+** Example (=dsel-example=)
+Data instances used for few-shot learning or evaluation.
+
+** Predictor (=dsel-predict=)
+Basic module for making LLM calls using a signature.
+
+** Chain of Thought (=dsel-chain-of-thought=)
+Module that prompts the LLM for step-by-step reasoning before answering.
+
+** Module (=dsel-module=)
+Base class for all runnable components in DSel.
+
+** Optimizer (=dsel-optimizer=)
+Compiles modules to improve their performance, such as selecting the best few-shot examples.
+
+** Adapter (=dsel-adapter=)
+Handles LLM prompt formatting and output parsing.
 
 * Installation
 
-DSel requires Emacs 28.1 or newer and depends on the =llm.el= package.
+** Requirements
 
-** Manual installation
+- Emacs 28.1+
+- =llm.el= (and an LLM provider like =llm-openai=)
 
-Clone this repository:
+** Setup
 
-#+begin_src bash
-git clone https://github.com/yourusername/dsel.git
+1. Clone the repository:
+   #+begin_src bash
+   git clone https://github.com/cosmicz/dsel.git
+   #+end_src
+
+2. Add to your load path:
+   #+begin_src elisp
+   (add-to-list 'load-path "~/path/to/dsel")
+   (require 'dsel)
+   #+end_src
+
+3. Configure with your preferred LLM provider:
+   #+begin_src elisp
+   (require 'llm-ollama) ;; or another provider
+   (dsel-configure :lm (make-llm-ollama :chat-model "gemma3:12b"))
+   #+end_src
+
+* Quick Start
+
+#+begin_src elisp
+;; 1. Define a signature (the schema for your LLM task)
+(dsel-defsignature quick-start-signature
+  "Answer the question."
+  :input-fields '((:name question :type string :desc "The question to answer"))
+  :output-fields '((:name answer :type string :desc "The answer to the question")))
+
+;; 2. Create a predictor (a module that uses the signature)
+(dsel-defpredict quick-start-predictor quick-start-signature)
+
+;; 3. Run the predictor
+(let ((prediction (dsel-forward quick-start-predictor :question "What is the capital of France?")))
+  (message "Answer: %s" (dsel-get-field prediction 'answer)))
+;; Output: Answer: The capital of France is Paris.
 #+end_src
 
-Add the following to your Emacs configuration:
+* Key Features & Usage
 
-#+begin_src emacs-lisp
-(add-to-list 'load-path "~/dev/dsel")
-(require 'dsel)
-#+end_src
+** Defining Signatures
 
-#+RESULTS:
-#+begin_example elisp
-dsel
-#+end_example
+A signature declares the inputs and outputs for an LLM task, including types and validation:
 
-* Usage
-
-** Define a Signature
-
-A signature declares the inputs and outputs for an LLM task:
-
-#+begin_src emacs-lisp
+#+begin_src elisp
 (dsel-defsignature sentiment-signature
-  "Classify the sentiment of the given text as positive, negative, or neutral."
-  :input-fields '((text . (:type string :desc "The text to classify")))
-  :output-fields '((sentiment . (:type string :desc "The sentiment: positive, negative, or neutral"))))
+  "Classify the sentiment of the given text."
+  :input-fields '((:name text
+                  :type string
+                  :desc "The text to classify"
+                  :prefix "TEXT:"))
+  :output-fields '((:name sentiment
+                   :type string
+                   :desc "The sentiment of the text"
+                   :prefix "SENTIMENT:"
+                   :enum ["positive" "negative" "neutral"])
+                   (:name confidence
+                    :type number
+                    :desc "Confidence score from 0.0 to 1.0"
+                    :prefix "CONFIDENCE:"
+                    :optional t)))
 #+end_src
 
-#+RESULTS:
-#+begin_example elisp
-#s(dsel-signature sentiment-signature
-                  "Classify the sentiment of the given text as positive, negative, or neutral."
-                  ((text :type string :desc "The text to classify" :prefix
-                         "Text: "))
-                  ((sentiment :type string :desc
-                              "The sentiment: positive, negative, or neutral"
-                              :prefix "Sentiment: ")))
-#+end_example
+** Creating Predictors
 
-** Create a Predictor
+Predictors are modules that execute LLM calls with a specific signature:
 
-A predictor is a module that uses an LLM to generate predictions based on a signature:
+#+BEGIN_SRC elisp
+;; Simple predictor
+(dsel-defpredict sentiment-predictor sentiment-signature)
 
-#+begin_src emacs-lisp
-(dsel-defpredict sentiment-predictor sentiment-signature
-  :config '(:temperature 0.2))
+;; Predictor with configuration options
+(dsel-defpredict configured-predictor sentiment-signature
+  :config '(:temperature 0.2
+            :max-tokens 100))
+#+END_SRC
+
+** Running Predictions
+
+Generate predictions by calling `dsel-forward`:
+
+#+begin_src elisp
+(let ((prediction (dsel-forward sentiment-predictor :text "I love this product!")))
+  (message "Sentiment: %s" (dsel-get-field prediction 'sentiment))
+  (message "Confidence: %s" (dsel-get-field prediction 'confidence)))
 #+end_src
 
-** Use Few-Shot Examples
+** Using Few-Shot Examples
 
-Add examples to improve performance:
+Improve performance with few-shot learning examples:
 
-#+begin_src emacs-lisp
+#+begin_src elisp
+;; Create individual examples
+(setq example1 (dsel-make-example :text "I love this product!" :sentiment "positive" :confidence 0.95))
+(setq example2 (dsel-make-example :text "I hate this product." :sentiment "negative" :confidence 0.9))
+
+;; Define a collection of examples
 (dsel-defexamples sentiment-examples '(text)
-                  (:text "This product is great!" :sentiment "positive")
-                  (:text "I hate this product." :sentiment "negative")
-                  (:text "It's okay, not the best." :sentiment "neutral"))
+  (:text "I love this!" :sentiment "positive" :confidence 0.95)
+  (:text "I hate this." :sentiment "negative" :confidence 0.9)
+  (:text "This is okay." :sentiment "neutral" :confidence 0.8))
 
-(setf (dsel-predict-demos sentiment-predictor) examples)
+;; Create a predictor with examples
+(dsel-defpredict fewshot-predictor sentiment-signature
+  :demos sentiment-examples)
 #+end_src
 
-** Generate Predictions
+** Chain of Thought Reasoning
 
-Use the predictor to generate predictions:
+For complex reasoning tasks, use chain-of-thought predictors:
 
-#+begin_src emacs-lisp
-(setq prediction
-      (dsel-forward sentiment-predictor :text "This product is okay."))
-
-;; Access the prediction
-(dsel-example-field prediction 'sentiment) ;; => "neutral"
-#+end_src
-
-** Use Chain-of-Thought
-
-For complex reasoning, use chain-of-thought:
-
-#+begin_src emacs-lisp
-(dsel-defchain-of-thought cot-predictor sentiment-signature
+#+begin_src elisp
+;; Create a chain-of-thought predictor
+(dsel-defchain-of-thought sentiment-cot-predictor sentiment-signature
   :rationale-field-name 'reasoning
-  :rationale-field-desc "Explain why you classified the text this way")
+  :rationale-field-desc "Explain why you classified the text with this sentiment"
+  :rationale-field-prefix "REASONING:")
 
-(setq cot-prediction
-      (dsel-forward cot-predictor :text "The product works, but it's expensive."))
-
-;; Access the prediction
-(dsel-example-field cot-prediction 'reasoning) ;; => "The text indicates..."
-(dsel-example-field cot-prediction 'sentiment) ;; => "mixed"
+;; Use the chain-of-thought predictor
+(let ((result (dsel-forward sentiment-cot-predictor
+                           :text "The product works as expected, but it's expensive.")))
+  (message "Reasoning: %s" (dsel-get-field result 'reasoning))
+  (message "Sentiment: %s" (dsel-get-field result 'sentiment)))
 #+end_src
 
-** Optimize with Few-Shot Learning
+** Complex Nested Types
 
-Improve performance by selecting optimal few-shot examples:
+DSel supports complex nested data structures with full type validation:
 
-#+begin_src emacs-lisp
+#+begin_src elisp
+(dsel-defsignature product-signature
+  "Analyze product data"
+  :input-fields '((:name query :type string :desc "Search query"))
+  :output-fields '((:name product
+                   :type object
+                   :desc "Product details"
+                   :properties ((:name name :type string :desc "Product name")
+                                (:name price :type number :desc "Product price")
+                                (:name available :type boolean :desc "Is available")
+                                (:name categories
+                                       :type array
+                                       :desc "Product categories"
+                                       :items (:type string))
+                                (:name metadata
+                                       :type object
+                                       :desc "Additional metadata"
+                                       :properties ((:name created-at :type string :desc "Creation date")
+                                                    (:name updated-at :type string :desc "Last update date")
+                                                    (:name rating :type number :desc "Product rating"))
+                                       :required (created-at)))
+                   :required (name price))))
+#+end_src
+
+Accessing nested fields is straightforward:
+
+#+begin_src elisp
+(let ((product (dsel-get-field prediction 'product)))
+  ;; Access basic fields
+  (alist-get 'name product)       ;; => "Premium Coffee Maker"
+  (alist-get 'price product)      ;; => 129.99
+  (alist-get 'available product)  ;; => t
+  
+  ;; Access array elements
+  (let ((categories (alist-get 'categories product)))
+    (aref categories 0))  ;; => "Kitchen"
+  
+  ;; Access nested objects
+  (let ((metadata (alist-get 'metadata product)))
+    (alist-get 'rating metadata)))  ;; => 4.8
+#+end_src
+
+** Optimizing with Labeled Few-Shot
+
+Improve performance by selecting the best few-shot examples:
+
+#+begin_src elisp
+;; Define an optimizer that selects the most relevant examples
 (dsel-defoptimizer sentiment-optimizer labeled-fewshot
   :metric (lambda (gold pred)
-            (string= (dsel-example-field gold 'sentiment)
-                     (dsel-example-field pred 'sentiment)))
-  :k 3)
+            (string= (dsel-get-field gold 'sentiment)
+                     (dsel-get-field pred 'sentiment)))
+  :k 3) ;; Number of examples to select
 
-(setq optimized-predictor
-      (dsel-compile sentiment-optimizer sentiment-predictor :trainset training-data))
+;; Create an optimized predictor
+(setq optimized-predictor 
+      (dsel-compile sentiment-optimizer sentiment-predictor :trainset sentiment-examples))
+
+;; Use the optimized predictor
+(dsel-forward optimized-predictor :text "This product is just okay.")
 #+end_src
 
-* Architecture
+* Advanced Features
 
-DSel consists of several core components:
+** Type System
 
-1. *Signatures*: Define the inputs and outputs for an LLM task
-2. *Modules*: Base class for composable LLM components
-3. *Predictors*: Execute LLM calls with specific signatures
-4. *Adapters*: Bridge between DSel and the LLM backend (=llm.el=)
-5. *Optimizers*: Improve LLM performance through techniques like few-shot learning
+DSel provides a rich type system for input and output fields:
+
+- =string=: Text values
+- =integer=: Whole numbers
+- =number=: Floating-point numbers
+- =boolean=: True/false values
+- =array=: Lists of values
+- =object=: Key-value structures
+- =enum=: Values from a predefined set
+
+Each type is validated and properly coerced from the LLM's text response.
+
+** Field Validation
+
+Required fields must be present and non-empty (except for boolean fields where =nil= is valid).
+Optional fields can be omitted or have empty/nil values.
+
+** Customizing Adapters
+
+For advanced use cases, you can customize how prompts are formatted and responses are parsed by implementing your own adapter:
+
+#+begin_src elisp
+(cl-defstruct (my-custom-adapter (:include dsel-adapter))
+  "My custom adapter implementation.")
+
+(cl-defmethod dsel-adapter-format-prompt ((adapter my-custom-adapter) ...)
+  ...)
+  
+(cl-defmethod dsel-adapter-parse-output ((adapter my-custom-adapter) ...)
+  ...)
+#+end_src
+
+* Examples
+
+** Sentiment Classifier
+A simple sentiment analysis system: [[file:examples/sentiment-classifier.el][sentiment-classifier.el]]
+
+** Git Commit Message Generator
+A practical tool that generates conventional commit messages from git diffs: [[file:examples/git-commit-generator.el][git-commit-generator.el]]
+
+* Logging and Debugging
+
+DSel includes a flexible logging system to help with debugging:
+
+#+begin_src elisp
+;; Configure logging
+(dsel-configure 
+ :log-buffer "*DSel Log*"    ;; Buffer to write logs (nil to disable)
+ :log-level 'debug           ;; Level: debug, info, warning, or error
+ :log-to-messages t)         ;; Also log to *Messages* buffer
+#+end_src
+
+* Testing
+
+Run tests with:
+
+#+begin_src bash
+make test
+#+end_src
+
+Run specific tests:
+
+#+begin_src bash
+make test SELECTOR="adapter"  # Run all adapter tests
+#+end_src
+
+* Roadmap / Future Work
+
+DSel is currently in active develoment
+
+- [X] *Declarative Signatures*: Define LLM tasks using structured "signatures" with comprehensive type validation
+- [ ] *Type Support*: Rich type system including strings, numbers, booleans, arrays, objects, and enums
+  - [ ] *Date* and *Time* types
+- [X] *Nested Structures*: Support for complex  nested objects and arrays with validation
+- [X] *Modular Programs*: Compose simple modules into complex LLM-powered applications
+- [X] *Optimizers*: improve LLM performance through few-shot example selection
+- [X] *Chain-of-Thought*: Built-in support for chain-of-thought reasoning
+- [ ] *Tool Integration*: Integrate with external tools and APIs for enhanced functionality
+- [ ] *ReAct*: ReAct-style module for reasoning and action generation
+- [ ] *Refine*: Refine LLM outputs with additional context or examples
+- [ ] *Async*: Support for asynchronous processing
+- [ ] *Caching* and *Persistency*
+- [ ] *Assertions and Suggestions*: Validate and suggest improvements for LLM outputs
+- [ ] *Program of Thought*: running programs to solve a problem
+- [ ] *Complex Optimization*: advanced optimization techniques beyond few-shot learning
 
 * Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please see [[file:CONTRIBUTING.org][CONTRIBUTING.org]] for details.
 
 * License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [[file:LICENSE][LICENSE]] file for details.
