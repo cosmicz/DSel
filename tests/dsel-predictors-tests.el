@@ -50,7 +50,7 @@
                                           :rationale-field-prefix "Rationale:"))
          ;; Define the expected response for this specific test case via the map
          (dsel-test-llm-prompt-to-response-map
-          `((,(dsel--format-input-fields (dsel-chain-of-thought-cot-signature cot) '((x . "value"))) .
+          `((,(dsel--format-input-fields (dsel-predict-signature cot) '((x . "value"))) .
              "Rationale: Custom rationale for COT test.\n\nY: custom_y_value\n\n")))
          (expected-raw-response "Rationale: Custom rationale for COT test.\n\nY: custom_y_value\n\n")
          (prediction (dsel-forward cot :x "value")))
@@ -77,13 +77,13 @@
          (cot (dsel-make-chain-of-thought sig
                                           :lm dsel-test-llm-provider
                                           :demos demos))
-         (predictor (dsel-chain-of-thought-predictor cot)))
-    (should (= (length (dsel-predict-demos predictor)) 2))
-    (should (equal (dsel-predict-demos predictor) demos))
-    (let ((first-demo (car (dsel-predict-demos predictor))))
+         )
+    (should (= (length (dsel-predict-demos cot)) 2))
+    (should (equal (dsel-predict-demos cot) demos))
+    (let ((first-demo (car (dsel-predict-demos cot))))
       (should (string= (dsel-get-field first-demo 'input) "sample1"))
       (should (string= (dsel-get-field first-demo 'output) "result1")))
-    (let ((second-demo (cadr (dsel-predict-demos predictor))))
+    (let ((second-demo (cadr (dsel-predict-demos cot))))
       (should (string= (dsel-get-field second-demo 'input) "sample2"))
       (should (string= (dsel-get-field second-demo 'output) "result2")))))
 

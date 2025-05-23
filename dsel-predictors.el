@@ -110,18 +110,8 @@ PLIST may include:
    :compiled-p nil
    :predictors nil))
 
-(cl-defstruct (dsel-chain-of-thought (:include dsel-module))
-  "Structure for a chain-of-thought reasoning module."
-  predictor                             ; dsel-predict: the underlying predictor
-  cot-signature)                        ; dsel-signature: modified signature with rationale
-
-(cl-defmethod dsel-collect-predictors ((cot dsel-chain-of-thought))
-  "For a chain-of-thought module, return its predictor."
-  (list (dsel-chain-of-thought-predictor cot)))
-
-(cl-defmethod dsel-forward ((cot dsel-chain-of-thought) &rest kwargs)
-  "Execute COT with KWARGS and return a prediction."
-  (apply #'dsel-forward (dsel-chain-of-thought-predictor cot) kwargs))
+(cl-defstruct (dsel-chain-of-thought (:include dsel-predict))
+  "Structure for a chain-of-thought reasoning module that extends dsel-predict.")
 
 (defun dsel-make-chain-of-thought (original-signature &rest plist)
   "Create a new chain-of-thought module from ORIGINAL-SIGNATURE and PLIST.
@@ -140,7 +130,7 @@ PLIST may include:
          (rationale-field-name (or (plist-get plist :rationale-field-name)
                                    'rationale))
          (rationale-field-prefix (or (plist-get plist :rationale-field-prefix)
-                                     "Rationale: "))
+                                     "Rationale:"))
          (rationale-field-desc (or (plist-get plist :rationale-field-desc)
                                    "Your step-by-step reasoning process"))
          ;; Create rationale field as a plist with :name keyword
@@ -148,23 +138,19 @@ PLIST may include:
                                   :type string
                                   :desc ,rationale-field-desc
                                   :prefix ,rationale-field-prefix))
-         ;; Use the new format for output fields
          (cot-signature (dsel-make-signature
                          instructions
                          :name sig-name
                          :input-fields input-fields
                          :output-fields (cons rationale-field output-fields))))
-    (let ((predictor (dsel-make-predict
-                      cot-signature
-                      :lm (plist-get plist :lm)
-                      :config (plist-get plist :config)
-                      :demos (plist-get plist :demos)))) ; Pass :demos here
-      (make-dsel-chain-of-thought
-       :name (plist-get plist :name)
-       :predictor predictor
-       :cot-signature cot-signature
-       :compiled-p nil
-       :predictors nil))))
+    (make-dsel-chain-of-thought
+     :name (plist-get plist :name)
+     :signature cot-signature
+     :lm (plist-get plist :lm)
+     :config (plist-get plist :config)
+     :demos (plist-get plist :demos)
+     :compiled-p nil
+     :predictors nil)))
 
 (provide 'dsel-predictors)
 ;;; dsel-predictors.el ends here
