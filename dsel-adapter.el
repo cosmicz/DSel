@@ -33,7 +33,7 @@ Return an llm-chat-prompt structure.")
 
 (cl-defgeneric dsel-adapter-parse-output (adapter signature llm-response-string)
   "Parse LLM-RESPONSE-STRING with the given ADAPTER and SIGNATURE.
-Return an alist of (output-field-name . parsed-value).")
+Return a list of field result plists, each with :name, :value, and :error keys.")
 
 (defun dsel--format-field-description (field-plist)
   "Format a rich field description for FIELD-PLIST.
@@ -187,7 +187,6 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
   "Parse LLM-RESPONSE-STRING using the default adapter and SIGNATURE."
   (let ((raw-parsed-fields (make-hash-table :test 'eq))
         (output-field-plists (dsel-signature-output-fields signature))
-        (final-result-alist nil)
         (current-pos 0)
         (loop-count 0))
 
@@ -241,46 +240,63 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
 
     (dsel--log 'debug "PARSE-OUTPUT: Loop finished. Final current_pos: %d. Parsed intermediate: %S" current-pos raw-parsed-fields)
 
-    ;; Pass 2: Coerce values and handle optional/required
-    (dolist (field-plist output-field-plists)
-      (let* ((field-name (plist-get field-plist :name))
-             (field-type (plist-get field-plist :type))
-             (is-optional (plist-get field-plist :optional))
-             ;; Use a unique sentinel to distinguish "not found" from "found with nil value"
-             ;; (though raw-value from parsing pass 1 should always be a string if found).
-             (raw-value (gethash field-name raw-parsed-fields :_dsel_field_not_found_)))
+    ;; Pass 2: Coerce values and handle optional/required, returning field result plists
+    (let ((field-results nil))
+      (dolist (field-plist output-field-plists)
+        (let* ((field-name (plist-get field-plist :name))
+               (field-type (plist-get field-plist :type))
+               (is-optional (plist-get field-plist :optional))
+               ;; Use a unique sentinel to distinguish "not found" from "found with nil value"
+               (raw-value (gethash field-name raw-parsed-fields :_dsel_field_not_found_))
+               (current-field-value nil)
+               (current-field-error nil))
 
-        (if (not (eq raw-value :_dsel_field_not_found_))
-            ;; Field's prefix was found in the LLM response, and raw-value is its string content.
-            (let ((coerced-value nil))
-              ;; Attempt to coerce the raw string value.
-              (condition-case err
-                  (setq coerced-value (dsel--coerce-value raw-value field-plist))
-                (error ; Catch errors specifically from dsel--coerce-value
-                 (error "Error coercing value for field '%s' (type %s) from raw value '%s': %s"
-                        field-name field-type raw-value (error-message-string err))))
+          (if (not (eq raw-value :_dsel_field_not_found_))
+              ;; Field's prefix was found in the LLM response
+              (progn
+                ;; Attempt to coerce the raw string value
+                (condition-case err
+                    (setq current-field-value (dsel--coerce-value raw-value field-plist))
+                  (error
+                   ;; Coercion failed
+                   (setq current-field-value nil
+                         current-field-error (list :type :coercion
+                                                   :message (error-message-string err)
+                                                   :raw-value raw-value
+                                                   :field field-name))))
 
-              (cond
-               ;; Case 1: Problematic nil for a REQUIRED non-boolean field
-               ((and (null coerced-value) (not is-optional) (not (eq field-type 'boolean)))
-                (error "Required field '%s' (type %s) was present but value empty/unparseable, resulting in nil."
-                       field-name field-type))
+                ;; Check for required field empty error (only if no coercion error yet)
+                (when (and (null current-field-error)
+                           (null current-field-value)
+                           (not is-optional)
+                           (not (eq field-type 'boolean)))
+                  (setq current-field-error (list :type :required-field-empty
+                                                  :message (format "Required field '%s' was empty, resulting in nil" field-name)
+                                                  :field field-name)))
 
-               ;; Case 2: Nil for an OPTIONAL non-boolean field -> OMIT from results
-               ((and (null coerced-value) is-optional (not (eq field-type 'boolean)))
-                (dsel--log 'debug "PARSE-OUTPUT: Skipping optional field '%s' (type %s) because its coerced value is nil."
-                           field-name field-type))
+                ;; Add field result to list (but omit optional fields with nil values and no errors)
+                (unless (and (null current-field-error)
+                             (null current-field-value)
+                             is-optional
+                             (not (eq field-type 'boolean)))
+                  (push (list :name field-name
+                             :value current-field-value
+                             :error current-field-error)
+                        field-results)))
 
-               ;; Case 3: All other valid coerced values (including non-nil, boolean nil, empty strings for string type)
-               (t
-                (dsel--log 'debug "PARSE-OUTPUT: Adding field '%s' with coerced value: %S" field-name coerced-value)
-                (push (cons field-name coerced-value) final-result-alist))))
-          ;; ELSE: Field's prefix was NOT found in the LLM response.
-          (unless is-optional
-            (error "Required output field '%s' (type %s) was not found in LLM response"
-                   field-name field-type)))))
+            ;; Field's prefix was NOT found in the LLM response
+            (if (not is-optional)
+                ;; Required field missing
+                (push (list :name field-name
+                           :value nil
+                           :error (list :type :missing-required
+                                       :message (format "Required field '%s' not found in LLM response" field-name)
+                                       :field field-name))
+                      field-results)
+              ;; Optional field missing - omit from results (don't add to field-results)
+              ))))
 
-    (nreverse final-result-alist)))
+      (nreverse field-results))))
 
 (cl-defun dsel--coerce-value (string-value field-plist)
   "Coerce STRING-VALUE to the type specified in FIELD-PLIST.

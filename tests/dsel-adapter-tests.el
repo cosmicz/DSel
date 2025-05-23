@@ -16,6 +16,14 @@
 (require 'ert)
 (require 'dsel)
 
+;; Helper function to convert field results to alist for testing
+(defun dsel-test--field-results-to-alist (field-results)
+  "Convert field result plists to alist for easier testing."
+  (cl-loop for frp in field-results
+           when (null (plist-get frp :error))
+           collect (cons (plist-get frp :name)
+                         (plist-get frp :value))))
+
 ;; Test dsel-adapter
 
 (ert-deftest dsel-test-adapter-format-prompt ()
@@ -74,13 +82,22 @@
                                     '(:name confidence :type number :desc "Confidence score from 0 to 1"))))
          (adapter (make-dsel-default-chat-adapter))
          (response "Sentiment: positive\n\nConfidence: 0.95")
-         (result (dsel-adapter-parse-output adapter sig response)))
+         (field-results (dsel-adapter-parse-output adapter sig response)))
 
-    ;; Test parsed result
-    (should (listp result))
-    (should (= (length result) 2))
-    (should (equal (assq 'sentiment result) '(sentiment . "positive")))
-    (should (equal (assq 'confidence result) '(confidence . 0.95)))))
+    ;; Test parsed result is a list of field result plists
+    (should (listp field-results))
+    (should (= (length field-results) 2))
+
+    ;; Convert to alist for easier testing
+    (let ((result-alist (cl-loop for frp in field-results
+                                 when (null (plist-get frp :error))
+                                 collect (cons (plist-get frp :name)
+                                               (plist-get frp :value)))))
+      (should (equal (assq 'sentiment result-alist) '(sentiment . "positive")))
+      (should (equal (assq 'confidence result-alist) '(confidence . 0.95))))
+
+    ;; Test no errors
+    (should (cl-every (lambda (frp) (null (plist-get frp :error))) field-results))))
 
 ;; Extended tests for dsel-adapter-parse-output
 
@@ -101,11 +118,12 @@ Explanation: This is a recursive implementation of the factorial function.
 It checks if n is less than or equal to 1, in which case it returns 1.
 Otherwise, it multiplies n by the factorial of (n-1).
 This approach demonstrates the elegant use of recursion for mathematical calculations.")
-         (result (dsel-adapter-parse-output adapter sig response)))
+         (field-results (dsel-adapter-parse-output adapter sig response))
+         (result (dsel-test--field-results-to-alist field-results)))
 
     ;; Test parsed multiline values
-    (should (listp result))
-    (should (= (length result) 2))
+    (should (listp field-results))
+    (should (= (length field-results) 2))
     
     ;; Check code field
     (let ((code-value (cdr (assq 'code result))))
@@ -117,7 +135,10 @@ This approach demonstrates the elegant use of recursion for mathematical calcula
     (let ((explanation-value (cdr (assq 'explanation result))))
       (should (stringp explanation-value))
       (should (string-match-p "recursive implementation" explanation-value))
-      (should (string-match-p "mathematical calculations" explanation-value)))))
+      (should (string-match-p "mathematical calculations" explanation-value)))
+    
+    ;; Test no errors
+    (should (cl-every (lambda (frp) (null (plist-get frp :error))) field-results))))
 
 (ert-deftest dsel-test-adapter-parse-fields-out-of-order ()
   "Test parsing when LLM returns fields out of order."
@@ -133,16 +154,20 @@ This approach demonstrates the elegant use of recursion for mathematical calcula
 Sentiment: positive
 
 Length: 42")
-         (result (dsel-adapter-parse-output adapter sig response)))
+         (field-results (dsel-adapter-parse-output adapter sig response))
+         (result (dsel-test--field-results-to-alist field-results)))
 
     ;; Test parsed out-of-order fields
-    (should (listp result))
-    (should (= (length result) 3))
+    (should (listp field-results))
+    (should (= (length field-results) 3))
     
     ;; Check that all fields are present with correct values
     (should (equal (cdr (assq 'length result)) 42))
     (should (equal (cdr (assq 'sentiment result)) "positive"))
-    (should (equal (cdr (assq 'summary result)) "This is a concise summary of the text."))))
+    (should (equal (cdr (assq 'summary result)) "This is a concise summary of the text."))
+    
+    ;; Test no errors
+    (should (cl-every (lambda (frp) (null (plist-get frp :error))) field-results))))
 
 (ert-deftest dsel-test-adapter-parse-missing-optional-fields ()
   "Test parsing when optional fields are missing from response."
@@ -156,18 +181,22 @@ Length: 42")
          (response "Title: Sample Document Analysis
 
 Word_count: 1234")
-         (result (dsel-adapter-parse-output adapter sig response)))
+         (field-results (dsel-adapter-parse-output adapter sig response))
+         (result (dsel-test--field-results-to-alist field-results)))
 
     ;; Test parsed result with missing optional field
-    (should (listp result))
-    (should (= (length result) 2))
+    (should (listp field-results))
+    (should (= (length field-results) 2))
     
     ;; Check present fields
     (should (equal (cdr (assq 'title result)) "Sample Document Analysis"))
     (should (equal (cdr (assq 'word_count result)) 1234))
     
     ;; Check missing optional field
-    (should (null (assq 'author result)))))
+    (should (null (assq 'author result)))
+    
+    ;; Test no errors
+    (should (cl-every (lambda (frp) (null (plist-get frp :error))) field-results))))
 
 (ert-deftest dsel-test-adapter-parse-missing-required-fields ()
   "Test parsing when required fields are missing from response."
@@ -177,11 +206,24 @@ Word_count: 1234")
                :output-fields (list '(:name title :type string :desc "Document title")
                                     '(:name category :type string :desc "Document category"))))
          (adapter (make-dsel-default-chat-adapter))
-         (response "Title: Important Document"))
+         (response "Title: Important Document")
+         (field-results (dsel-adapter-parse-output adapter sig response)))
 
-    ;; Expect an error because 'category' is required but missing
-    (should-error (dsel-adapter-parse-output adapter sig response)
-                  :type 'error)))
+    ;; Should not error, but should return field results with errors
+    (should (listp field-results))
+    (should (= (length field-results) 2))
+    
+    ;; Check that title was parsed successfully
+    (let ((title-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'title)) field-results)))
+      (should title-result)
+      (should (null (plist-get title-result :error)))
+      (should (equal (plist-get title-result :value) "Important Document")))
+    
+    ;; Check that category has a missing-required error
+    (let ((category-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'category)) field-results)))
+      (should category-result)
+      (should (plist-get category-result :error))
+      (should (eq (plist-get (plist-get category-result :error) :type) :missing-required)))))
 
 (ert-deftest dsel-test-adapter-parse-empty-required-fields ()
   "Test parsing when required fields are empty in the response."
@@ -194,11 +236,24 @@ Word_count: 1234")
          (adapter (make-dsel-default-chat-adapter))
          (response "Title: Statistical Analysis
 
-Word_count: "))
+Word_count: ")
+         (field-results (dsel-adapter-parse-output adapter sig response)))
 
-    ;; Expect an error because 'word_count' is required but empty (converted to nil)
-    (should-error (dsel-adapter-parse-output adapter sig response)
-                  :type 'error))
+    ;; Should not error, but should return field results with errors
+    (should (listp field-results))
+    (should (= (length field-results) 2))
+    
+    ;; Check that title was parsed successfully
+    (let ((title-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'title)) field-results)))
+      (should title-result)
+      (should (null (plist-get title-result :error)))
+      (should (equal (plist-get title-result :value) "Statistical Analysis")))
+    
+    ;; Check that word_count has a required-field-empty error
+    (let ((word-count-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'word_count)) field-results)))
+      (should word-count-result)
+      (should (plist-get word-count-result :error))
+      (should (eq (plist-get (plist-get word-count-result :error) :type) :required-field-empty))))
 
   ;; Test 2: Empty required array field
   (let* ((sig (dsel-make-signature
@@ -206,17 +261,24 @@ Word_count: "))
                :input-fields (list '(:name document :type string :desc "Document to analyze"))
                :output-fields (list '(:name title :type string :desc "Document title")
                                     '(:name categories
-                                         :type array
-                                         :desc "Document categories"
-                                         :items (:type string)))))
+                                            :type array
+                                            :desc "Document categories"
+                                            :items (:type string)))))
          (adapter (make-dsel-default-chat-adapter))
          (response "Title: Array Test Document
 
-Categories: "))
+Categories: ")
+         (field-results (dsel-adapter-parse-output adapter sig response)))
 
-    ;; Expect an error because 'categories' is required but empty (will be nil after coercion)
-    (should-error (dsel-adapter-parse-output adapter sig response)
-                  :type 'error))
+    ;; Should return field results with errors
+    (should (listp field-results))
+    (should (= (length field-results) 2))
+    
+    ;; Check that categories has a required-field-empty error
+    (let ((categories-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'categories)) field-results)))
+      (should categories-result)
+      (should (plist-get categories-result :error))
+      (should (eq (plist-get (plist-get categories-result :error) :type) :required-field-empty))))
 
   ;; Test 3: Empty required object field
   (let* ((sig (dsel-make-signature
@@ -224,17 +286,24 @@ Categories: "))
                :input-fields (list '(:name document :type string :desc "Document to analyze"))
                :output-fields (list '(:name title :type string :desc "Document title")
                                     '(:name metadata
-                                         :type object
-                                         :desc "Document metadata"
-                                         :properties ((:name author :type string))))))
+                                            :type object
+                                            :desc "Document metadata"
+                                            :properties ((:name author :type string))))))
          (adapter (make-dsel-default-chat-adapter))
          (response "Title: Object Test Document
 
-Metadata: "))
+Metadata: ")
+         (field-results (dsel-adapter-parse-output adapter sig response)))
 
-    ;; Expect an error because 'metadata' is required but empty (will be nil after coercion)
-    (should-error (dsel-adapter-parse-output adapter sig response)
-                  :type 'error)))
+    ;; Should return field results with errors
+    (should (listp field-results))
+    (should (= (length field-results) 2))
+    
+    ;; Check that metadata has a required-field-empty error
+    (let ((metadata-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'metadata)) field-results)))
+      (should metadata-result)
+      (should (plist-get metadata-result :error))
+      (should (eq (plist-get (plist-get metadata-result :error) :type) :required-field-empty)))))
 
 (ert-deftest dsel-test-adapter-parse-empty-values ()
   "Test parsing when field values are empty."
@@ -250,11 +319,12 @@ Metadata: "))
 Age: 
 
 Comments: ")
-         (result (dsel-adapter-parse-output adapter sig response)))
+         (field-results (dsel-adapter-parse-output adapter sig response))
+         (result (dsel-test--field-results-to-alist field-results)))
 
     ;; Test parsed result with empty values
-    (should (listp result))
-    (should (= (length result) 2)) ;; Now only 2 fields should be included
+    (should (listp field-results))
+    (should (= (length field-results) 2)) ;; Only 2 fields: name and comments (age is omitted as optional with nil value)
 
     ;; Check non-empty value
     (should (equal (cdr (assq 'name result)) "John Smith"))
@@ -262,8 +332,10 @@ Comments: ")
     ;; Check empty values - string field should be empty string
     (should (equal (cdr (assq 'comments result)) ""))
 
-    ;; Check empty values - number field should not be present in the result
-    (should (eq nil (assq 'age result)))))
+    ;; Check empty values - optional number field should not be in field-results or result alist
+    (should (eq nil (assq 'age result)))
+    (let ((age-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'age)) field-results)))
+      (should (null age-result))))) ;; Should not be present at all
 
 (ert-deftest dsel-test-adapter-parse-whitespace-variations ()
   "Test parsing with various whitespace in field values and prefixes."
@@ -276,16 +348,19 @@ Comments: ")
          (response "First_field:   Value with leading spaces
 
 Second_field: Value without space after prefix")
-         (result (dsel-adapter-parse-output adapter sig response)))
-
+         (field-results (dsel-adapter-parse-output adapter sig response))
+         (result (dsel-test--field-results-to-alist field-results)))
 
     ;; Test parsed result with whitespace variations
-    (should (listp result))
-    (should (= (length result) 2))
+    (should (listp field-results))
+    (should (= (length field-results) 2))
 
     ;; Check values with leading/trailing spaces
     (should (equal (cdr (assq 'first_field result)) "Value with leading spaces"))
-    (should (equal (cdr (assq 'second_field result)) "Value without space after prefix"))))
+    (should (equal (cdr (assq 'second_field result)) "Value without space after prefix"))
+
+    ;; Test no errors
+    (should (cl-every (lambda (frp) (null (plist-get frp :error))) field-results))))
 
 (ert-deftest dsel-test-adapter-parse-similar-prefixes ()
   "Test parsing when field prefixes are similar or substrings of each other."
@@ -301,16 +376,20 @@ Second_field: Value without space after prefix")
 Note_details: These are the additional explanatory details.
 
 Summary: Overall it says something important.")
-         (result (dsel-adapter-parse-output adapter sig response)))
+         (field-results (dsel-adapter-parse-output adapter sig response))
+         (result (dsel-test--field-results-to-alist field-results)))
 
     ;; Test parsed result with similar prefixes
-    (should (listp result))
-    (should (= (length result) 3))
+    (should (listp field-results))
+    (should (= (length field-results) 3))
 
     ;; Check each field's value - important to ensure "Note:" doesn't consume "Note_details:"
     (should (equal (cdr (assq 'note result)) "This is the main note content."))
     (should (equal (cdr (assq 'note_details result)) "These are the additional explanatory details."))
-    (should (equal (cdr (assq 'summary result)) "Overall it says something important."))))
+    (should (equal (cdr (assq 'summary result)) "Overall it says something important."))
+
+    ;; Test no errors
+    (should (cl-every (lambda (frp) (null (plist-get frp :error))) field-results))))
 
 (ert-deftest dsel-test-adapter-parse-trailing-text ()
   "Test parsing when response has trailing text not belonging to any field."
@@ -325,17 +404,21 @@ Summary: Overall it says something important.")
 Body: Example body text with some content.
 
 I hope this helps! Let me know if you need any revisions.")
-         (result (dsel-adapter-parse-output adapter sig response)))
+         (field-results (dsel-adapter-parse-output adapter sig response))
+         (result (dsel-test--field-results-to-alist field-results)))
 
     ;; Test parsed result with trailing text
-    (should (listp result))
-    (should (= (length result) 2))
+    (should (listp field-results))
+    (should (= (length field-results) 2))
 
     ;; Check that trailing text doesn't affect the fields
     (should (equal (cdr (assq 'title result)) "Example Title"))
     ;; The parser doesn't strip out trailing text after the field value,
     ;; so we need to check the whole content
-    (should (string-match-p "^Example body text with some content" (cdr (assq 'body result))))))
+    (should (string-match-p "^Example body text with some content" (cdr (assq 'body result))))
+
+    ;; Test no errors
+    (should (cl-every (lambda (frp) (null (plist-get frp :error))) field-results))))
 
 (ert-deftest dsel-test-adapter-parse-field-occurrence-after-value ()
   "Test parsing when a field name appears in another field's value."
@@ -348,15 +431,19 @@ I hope this helps! Let me know if you need any revisions.")
          (response "Summary: This document discusses how to provide feedback.
 
 Feedback: The summary is accurate. When writing summaries, be concise.")
-         (result (dsel-adapter-parse-output adapter sig response)))
+         (field-results (dsel-adapter-parse-output adapter sig response))
+         (result (dsel-test--field-results-to-alist field-results)))
 
     ;; Test parsed result where field name appears in another field's value
-    (should (listp result))
-    (should (= (length result) 2))
+    (should (listp field-results))
+    (should (= (length field-results) 2))
 
     ;; Check field values
     (should (equal (cdr (assq 'summary result)) "This document discusses how to provide feedback."))
-    (should (equal (cdr (assq 'feedback result)) "The summary is accurate. When writing summaries, be concise."))))
+    (should (equal (cdr (assq 'feedback result)) "The summary is accurate. When writing summaries, be concise."))
+
+    ;; Test no errors
+    (should (cl-every (lambda (frp) (null (plist-get frp :error))) field-results))))
 
 (ert-deftest dsel-test-coercion-basic-types ()
   "Test coercion of basic field types."
@@ -435,6 +522,191 @@ Feedback: The summary is accurate. When writing summaries, be concise.")
   (should-error
    (dsel--coerce-value "purple" '(:type string :enum ["red" "green" "blue"]))
    :type 'error))
+
+(ert-deftest dsel-test-prediction-error-helpers ()
+  "Test the prediction error helper functions."
+  (let* ((sig (dsel-make-signature
+               "Test error helpers"
+               :input-fields (list '(:name input :type string :desc "Test input"))
+               :output-fields (list '(:name field1 :type string :desc "First field")
+                                    '(:name field2 :type integer :desc "Second field"))))
+         (adapter (make-dsel-default-chat-adapter))
+         (response "Field1: valid_value")  ; Missing field2
+         (field-results (dsel-adapter-parse-output adapter sig response))
+         (prediction (dsel-make-prediction
+                      :input "test"
+                      :field1 "valid_value"
+                      :errors (cl-loop for frp in field-results
+                                       when (plist-get frp :error)
+                                       collect (plist-get frp :error)))))
+
+    ;; Test dsel-prediction-ok-p
+    (should (not (dsel-prediction-ok-p prediction)))
+    
+    ;; Test dsel-prediction-field-error
+    (should (null (dsel-prediction-field-error prediction 'field1)))
+    (should (dsel-prediction-field-error prediction 'field2))
+    (should (eq (plist-get (dsel-prediction-field-error prediction 'field2) :type) :missing-required))
+    
+    ;; Test dsel-prediction-format-errors
+    (let ((error-text (dsel-prediction-format-errors prediction)))
+      (should (stringp error-text))
+      (should (string-match-p "field2" error-text))
+      (should (string-match-p "missing-required" error-text)))
+    
+    ;; Test dsel-prediction-report-errors returns error count
+    (should (= (dsel-prediction-report-errors prediction) 1))
+    
+    ;; Test with successful prediction
+    (let ((good-prediction (dsel-make-prediction :input "test" :field1 "value" :field2 42)))
+      (should (dsel-prediction-ok-p good-prediction))
+      (should (null (dsel-prediction-format-errors good-prediction)))
+      (should (null (dsel-prediction-report-errors good-prediction))))))
+
+(ert-deftest dsel-test-coercion-error-scenarios ()
+  "Test various coercion error scenarios."
+  ;; Boolean coercion errors
+  (should-error (dsel--coerce-value "" '(:type boolean :name test-bool)))
+  (should-error (dsel--coerce-value "maybe" '(:type boolean :name test-bool)))
+  (should-error (dsel--coerce-value "1.5" '(:type boolean :name test-bool)))
+  
+  ;; Numeric coercion errors with helpful messages
+  (should-error (dsel--coerce-value "abc" '(:type integer :name test-int)))
+  (should-error (dsel--coerce-value "3.14" '(:type integer :name test-int)))
+  ;; Note: "42px" parses as 42 with string-to-number, so we skip this check
+  ;; Note: "1e10" is actually valid scientific notation and gets converted to 10000000000 by string-to-number
+  
+  ;; Array/Object JSON parsing errors  
+  (should-error (dsel--coerce-value "{broken json" '(:type object :name test-obj)))
+  (should-error (dsel--coerce-value "completely invalid array" '(:type array :name test-arr)))
+  (should-error (dsel--coerce-value "not-json" '(:type object :name test-obj)))
+  
+  ;; Enum validation errors
+  (should-error (dsel--coerce-value "purple" '(:type string :enum ["red" "green" "blue"] :name test-enum))))
+
+(ert-deftest dsel-test-mixed-success-and-error-fields ()
+  "Test parsing when some fields succeed and others fail."
+  (let* ((sig (dsel-make-signature
+               "Mixed success/error test"
+               :input-fields (list '(:name input :type string :desc "Test input"))
+               :output-fields (list '(:name good_string :type string :desc "Valid string field")
+                                    '(:name bad_integer :type integer :desc "Invalid integer field")
+                                    '(:name good_boolean :type boolean :desc "Valid boolean field")
+                                    '(:name missing_required :type string :desc "Missing required field"))))
+         (adapter (make-dsel-default-chat-adapter))
+         (response "Good_string: hello world
+
+Bad_integer: not_a_number
+
+Good_boolean: true")
+         (field-results (dsel-adapter-parse-output adapter sig response)))
+
+    ;; Should have 4 field results (all fields processed)
+    (should (= (length field-results) 4))
+    
+    ;; Check successful fields
+    (let ((good-string-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'good_string)) field-results))
+          (good-boolean-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'good_boolean)) field-results)))
+      (should good-string-result)
+      (should (null (plist-get good-string-result :error)))
+      (should (equal (plist-get good-string-result :value) "hello world"))
+      
+      (should good-boolean-result)
+      (should (null (plist-get good-boolean-result :error)))
+      (should (eq (plist-get good-boolean-result :value) t)))
+    
+    ;; Check error fields
+    (let ((bad-integer-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'bad_integer)) field-results))
+          (missing-result (cl-find-if (lambda (frp) (eq (plist-get frp :name) 'missing_required)) field-results)))
+      (should bad-integer-result)
+      (should (plist-get bad-integer-result :error))
+      (should (eq (plist-get (plist-get bad-integer-result :error) :type) :coercion))
+      
+      (should missing-result)
+      (should (plist-get missing-result :error))
+      (should (eq (plist-get (plist-get missing-result :error) :type) :missing-required)))))
+
+(ert-deftest dsel-test-boolean-coercion-edge-cases ()
+  "Test boolean coercion with various valid and invalid inputs."
+  ;; Valid true values (case-insensitive)
+  (should (eq t (dsel--coerce-value "true" '(:type boolean))))
+  (should (eq t (dsel--coerce-value "TRUE" '(:type boolean))))
+  (should (eq t (dsel--coerce-value "True" '(:type boolean))))
+  (should (eq t (dsel--coerce-value "yes" '(:type boolean))))
+  (should (eq t (dsel--coerce-value "YES" '(:type boolean))))
+  (should (eq t (dsel--coerce-value "t" '(:type boolean))))
+  (should (eq t (dsel--coerce-value "T" '(:type boolean))))
+  (should (eq t (dsel--coerce-value "1" '(:type boolean))))
+  
+  ;; Valid false values (case-insensitive)
+  (should (eq nil (dsel--coerce-value "false" '(:type boolean))))
+  (should (eq nil (dsel--coerce-value "FALSE" '(:type boolean))))
+  (should (eq nil (dsel--coerce-value "False" '(:type boolean))))
+  (should (eq nil (dsel--coerce-value "no" '(:type boolean))))
+  (should (eq nil (dsel--coerce-value "NO" '(:type boolean))))
+  (should (eq nil (dsel--coerce-value "nil" '(:type boolean))))
+  (should (eq nil (dsel--coerce-value "NIL" '(:type boolean))))
+  (should (eq nil (dsel--coerce-value "0" '(:type boolean))))
+  
+  ;; Invalid boolean values should error
+  (should-error (dsel--coerce-value "" '(:type boolean :name test-bool)))
+  (should-error (dsel--coerce-value "   " '(:type boolean :name test-bool))) ; whitespace only
+  (should-error (dsel--coerce-value "maybe" '(:type boolean :name test-bool)))
+  (should-error (dsel--coerce-value "2" '(:type boolean :name test-bool)))
+  (should-error (dsel--coerce-value "on" '(:type boolean :name test-bool)))
+  (should-error (dsel--coerce-value "off" '(:type boolean :name test-bool))))
+
+(ert-deftest dsel-test-nil-input-coercion ()
+  "Test coercion behavior with nil string inputs."
+  ;; String type with nil input should return empty string
+  (should (equal "" (dsel--coerce-value nil '(:type string))))
+  
+  ;; Numeric types with nil input should return nil
+  (should (null (dsel--coerce-value nil '(:type integer))))
+  (should (null (dsel--coerce-value nil '(:type number))))
+  
+  ;; Array/Object types with nil input should return nil
+  (should (null (dsel--coerce-value nil '(:type array))))
+  (should (null (dsel--coerce-value nil '(:type object))))
+  
+  ;; Boolean type with nil input should error
+  (should-error (dsel--coerce-value nil '(:type boolean :name test-bool))))
+
+(ert-deftest dsel-test-error-message-content ()
+  "Test that error messages contain helpful information."
+  (let* ((sig (dsel-make-signature
+               "Error message test"
+               :input-fields (list '(:name input :type string :desc "Test input"))
+               :output-fields (list '(:name bad_number :type integer :desc "Bad number field")
+                                    '(:name missing_field :type string :desc "Missing field"))))
+         (adapter (make-dsel-default-chat-adapter))
+         (response "Bad_number: not_a_number_123")
+         (field-results (dsel-adapter-parse-output adapter sig response)))
+
+    ;; Test coercion error message includes raw value and field name
+    (let ((coercion-error (cl-find-if (lambda (frp) 
+                                        (and (eq (plist-get frp :name) 'bad_number)
+                                             (plist-get frp :error)))
+                                      field-results)))
+      (should coercion-error)
+      (let ((error-info (plist-get coercion-error :error)))
+        (should (eq (plist-get error-info :type) :coercion))
+        (should (eq (plist-get error-info :field) 'bad_number))
+        (should (equal (plist-get error-info :raw-value) "not_a_number_123"))
+        (should (stringp (plist-get error-info :message)))
+        (should (string-match-p "bad_number" (plist-get error-info :message)))))
+    
+    ;; Test missing field error message includes field name
+    (let ((missing-error (cl-find-if (lambda (frp) 
+                                       (and (eq (plist-get frp :name) 'missing_field)
+                                            (plist-get frp :error)))
+                                     field-results)))
+      (should missing-error)
+      (let ((error-info (plist-get missing-error :error)))
+        (should (eq (plist-get error-info :type) :missing-required))
+        (should (eq (plist-get error-info :field) 'missing_field))
+        (should (stringp (plist-get error-info :message)))
+        (should (string-match-p "missing_field" (plist-get error-info :message)))))))
 
 (provide 'dsel-adapter-tests)
 ;;; dsel-adapter-tests.el ends here

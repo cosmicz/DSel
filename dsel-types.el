@@ -224,17 +224,20 @@ This is an alias for `dsel-example-field'.")
   "A structure representing a prediction from an LLM."
   completions                           ; List of alists for multiple generations
   lm-provider                           ; The llm.el provider instance used
-  raw-response)                         ; The raw string from the LLM
+  raw-response                          ; The raw string from the LLM
+  (errors nil :type list))              ; List of error plists for parsing failures
 
 (defun dsel-make-prediction (&rest plist)
   "Create a new prediction from properties in PLIST.
 PLIST includes field-value pairs and may include:
 - :completions List of alists for multiple generations
 - :lm-provider The provider instance used
-- :raw-response The raw string from the LLM"
+- :raw-response The raw string from the LLM
+- :errors List of error plists for parsing failures"
   (let* ((completions (plist-get plist :completions))
          (lm-provider (plist-get plist :lm-provider))
          (raw-response (plist-get plist :raw-response))
+         (errors (plist-get plist :errors))
          (fields nil)
          (plist-copy (copy-sequence plist)))
     
@@ -244,14 +247,15 @@ PLIST includes field-value pairs and may include:
             (value (pop plist-copy)))
         ;; Skip special properties and include all other fields
         (when (and key 
-                   (not (memq key '(:lm-provider :raw-response :completions))))
+                   (not (memq key '(:lm-provider :raw-response :completions :errors))))
           ;; Convert :keyword to 'keyword for field names
           (push (cons (dsel-keyword-to-symbol key) value) fields))))
     
     (make-dsel-prediction :fields (nreverse fields)
                           :completions completions
                           :lm-provider lm-provider
-                          :raw-response raw-response)))
+                          :raw-response raw-response
+                          :errors errors)))
 
 (defun dsel-keyword-to-symbol (keyword)
   "Convert KEYWORD (e.g., :text) to a symbol (e.g., 'text).
@@ -276,6 +280,55 @@ If SYMBOL is not a symbol or keyword, signal an error."
     symbol)
    (t
     (error "Argument is not a symbol or keyword: %s" symbol))))
+
+;;; Prediction Helper Functions
+
+(defun dsel-prediction-ok-p (prediction)
+  "Return t if PREDICTION has no errors, nil otherwise."
+  (null (dsel-prediction-errors prediction)))
+
+(defun dsel-prediction-field-error (prediction field-name)
+  "Search for an error related to FIELD-NAME in PREDICTION.
+Return the error plist or nil if no error is found for that field."
+  (cl-find-if (lambda (error-plist)
+                (eq (plist-get error-plist :field) field-name))
+              (dsel-prediction-errors prediction)))
+
+(defun dsel-prediction-report-errors (prediction &optional prefix)
+  "Report all errors in PREDICTION using `message'.
+PREFIX is an optional string to prepend to each error message.
+If PREFIX is nil, defaults to \"- \"."
+  (let ((errors (dsel-prediction-errors prediction))
+        (error-prefix (or prefix "- ")))
+    (when errors
+      (dolist (err errors)
+        (message "%sField: %S, Type: %S, Message: %s%s"
+                 error-prefix
+                 (plist-get err :field)
+                 (plist-get err :type)
+                 (plist-get err :message)
+                 (if (plist-get err :raw-value)
+                     (format " (Raw: '%s')" (plist-get err :raw-value))
+                   "")))
+      (length errors))))
+
+(defun dsel-prediction-format-errors (prediction &optional separator)
+  "Format all errors in PREDICTION as a string.
+SEPARATOR is used between error messages (defaults to newline).
+Returns nil if there are no errors."
+  (let ((errors (dsel-prediction-errors prediction)))
+    (when errors
+      (mapconcat
+       (lambda (err)
+         (format "Field: %S, Type: %S, Message: %s%s"
+                 (plist-get err :field)
+                 (plist-get err :type)
+                 (plist-get err :message)
+                 (if (plist-get err :raw-value)
+                     (format " (Raw: '%s')" (plist-get err :raw-value))
+                   "")))
+       errors
+       (or separator "\n")))))
 
 (provide 'dsel-types)
 ;;; dsel-types.el ends here

@@ -52,27 +52,42 @@
                       (dsel-predict-demos predict)
                       current-inputs-alist
                       merged-config))
-         (raw-llm-response (llm-chat lm-to-use llm-prompt))  ;; TODO: might need multi-output for tool use
-         (parsed-outputs-alist
-          (dsel-adapter-parse-output
-           adapter-to-use
-           (dsel-predict-signature predict)
-           raw-llm-response))
-         (prediction
-          (apply #'dsel-make-prediction
-                 (append
-                  (cl-loop for (field-symbol . value) in current-inputs-alist
-                           collect (dsel-symbol-to-keyword field-symbol)
-                           collect value)
-                  (cl-loop for (field-symbol . value) in parsed-outputs-alist
-                           collect (dsel-symbol-to-keyword field-symbol)
-                           collect value)
-                  (list :lm-provider lm-to-use
-                        :raw-response raw-llm-response)))))
-    (when dsel-settings--trace
-      (push (list predict current-inputs-alist prediction)
-            dsel-settings--trace))
-    prediction))
+         (raw-llm-response (llm-chat lm-to-use llm-prompt))
+         (field-results (dsel-adapter-parse-output
+                         adapter-to-use
+                         (dsel-predict-signature predict)
+                         raw-llm-response))
+         (prediction-fields-alist nil)
+         (accumulated-errors nil))
+
+    ;; Process field results to separate successful fields from errors
+    (dolist (frp field-results)
+      (let ((field-name (plist-get frp :name))
+            (field-value (plist-get frp :value))
+            (field-error (plist-get frp :error)))
+        (if field-error
+            (push field-error accumulated-errors)
+          (push (cons field-name field-value) prediction-fields-alist))))
+    
+    (let ((prediction
+           (apply #'dsel-make-prediction
+                  (append
+                   ;; Include input fields
+                   (cl-loop for (field-symbol . value) in current-inputs-alist
+                            collect (dsel-symbol-to-keyword field-symbol)
+                            collect value)
+                   ;; Include successfully parsed output fields
+                   (cl-loop for (field-symbol . value) in prediction-fields-alist
+                            collect (dsel-symbol-to-keyword field-symbol)
+                            collect value)
+                   ;; Include LLM metadata and errors
+                   (list :lm-provider lm-to-use
+                         :raw-response raw-llm-response
+                         :errors (nreverse accumulated-errors))))))
+      (when dsel-settings--trace
+        (push (list predict current-inputs-alist prediction)
+              dsel-settings--trace))
+      prediction)))
 
 (cl-defmethod dsel-module-reset-optimizable-state ((predict dsel-predict))
   "Reset 'compiled-p (from base) and demos for a dsel-predict instance."

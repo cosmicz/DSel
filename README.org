@@ -259,6 +259,33 @@ Each type is validated and properly coerced from the LLM's text response.
 Required fields must be present and non-empty (except for boolean fields where =nil= is valid).
 Optional fields can be omitted or have empty/nil values.
 
+** Error Handling
+
+DSel provides robust error handling for parsing failures. Instead of stopping execution when the LLM produces invalid output, errors are collected in the prediction's =errors= slot:
+
+#+begin_src elisp
+(let ((prediction (dsel-forward predictor :text "Some input")))
+  ;; Check if prediction has errors
+  (if (dsel-prediction-ok-p prediction)
+      (message "Success: %s" (dsel-get-field prediction 'result))
+    ;; Handle errors gracefully
+    (message "Errors occurred:")
+    (dsel-prediction-report-errors prediction)))
+#+end_src
+
+Error types include:
+- =:missing-required=: Required field not found in LLM response
+- =:required-field-empty=: Required field is present but empty
+- =:coercion=: Field value cannot be converted to the expected type
+
+You can also check for specific field errors:
+
+#+begin_src elisp
+;; Check if a specific field had an error
+(when-let ((error (dsel-prediction-field-error prediction 'field-name)))
+  (message "Field error: %s" (plist-get error :message)))
+#+end_src
+
 ** Customizing Adapters
 
 For advanced use cases, you can customize how prompts are formatted and responses are parsed by implementing your own adapter:
@@ -310,19 +337,19 @@ make test SELECTOR="adapter"  # Run all adapter tests
 
 * Roadmap / Future Work
 
-DSel is currently in active develoment
+DSel is currently in active develoment, its APIs may change.
 
 - [X] *Declarative Signatures*: Define LLM tasks using structured "signatures" with comprehensive type validation
-- [ ] *Type Support*: Rich type system including strings, numbers, booleans, arrays, objects, and enums
-  - [ ] *Date* and *Time* types
+- [-] *Type Support*: Rich type system including strings, numbers, booleans, arrays, objects, and enums
+  - [ ] *Date* / *Time* types
 - [X] *Nested Structures*: Support for complex  nested objects and arrays with validation
 - [X] *Modular Programs*: Compose simple modules into complex LLM-powered applications
 - [X] *Optimizers*: improve LLM performance through few-shot example selection
 - [X] *Chain-of-Thought*: Built-in support for chain-of-thought reasoning
+- [ ] *Async*: asynchronous processing by default
 - [ ] *Tool Integration*: Integrate with external tools and APIs for enhanced functionality
-- [ ] *ReAct*: ReAct-style module for reasoning and action generation
+- [ ] *ReAct*: module for reasoning and action generation
 - [ ] *Refine*: Refine LLM outputs with additional context or examples
-- [ ] *Async*: Support for asynchronous processing
 - [ ] *Caching* and *Persistency*
 - [ ] *Assertions and Suggestions*: Validate and suggest improvements for LLM outputs
 - [ ] *Program of Thought*: running programs to solve a problem
