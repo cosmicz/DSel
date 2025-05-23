@@ -1,6 +1,6 @@
 ;;; dsel-adapter-tests.el --- Tests for dsel adapter functionality  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024
+;; Copyright (C) 2025
 
 ;; Author: Cosmin-Octavian C. (cosmicz)
 ;; Keywords: llm, tools
@@ -183,13 +183,66 @@ Word_count: 1234")
     (should-error (dsel-adapter-parse-output adapter sig response)
                   :type 'error)))
 
+(ert-deftest dsel-test-adapter-parse-empty-required-fields ()
+  "Test parsing when required fields are empty in the response."
+  ;; Test 1: Empty required numeric field
+  (let* ((sig (dsel-make-signature
+               "Document statistics"
+               :input-fields (list '(:name document :type string :desc "Document to analyze"))
+               :output-fields (list '(:name title :type string :desc "Document title")
+                                    '(:name word_count :type integer :desc "Word count"))))
+         (adapter (make-dsel-default-chat-adapter))
+         (response "Title: Statistical Analysis
+
+Word_count: "))
+
+    ;; Expect an error because 'word_count' is required but empty (converted to nil)
+    (should-error (dsel-adapter-parse-output adapter sig response)
+                  :type 'error))
+
+  ;; Test 2: Empty required array field
+  (let* ((sig (dsel-make-signature
+               "Document categories"
+               :input-fields (list '(:name document :type string :desc "Document to analyze"))
+               :output-fields (list '(:name title :type string :desc "Document title")
+                                    '(:name categories
+                                         :type array
+                                         :desc "Document categories"
+                                         :items (:type string)))))
+         (adapter (make-dsel-default-chat-adapter))
+         (response "Title: Array Test Document
+
+Categories: "))
+
+    ;; Expect an error because 'categories' is required but empty (will be nil after coercion)
+    (should-error (dsel-adapter-parse-output adapter sig response)
+                  :type 'error))
+
+  ;; Test 3: Empty required object field
+  (let* ((sig (dsel-make-signature
+               "Document metadata"
+               :input-fields (list '(:name document :type string :desc "Document to analyze"))
+               :output-fields (list '(:name title :type string :desc "Document title")
+                                    '(:name metadata
+                                         :type object
+                                         :desc "Document metadata"
+                                         :properties ((:name author :type string))))))
+         (adapter (make-dsel-default-chat-adapter))
+         (response "Title: Object Test Document
+
+Metadata: "))
+
+    ;; Expect an error because 'metadata' is required but empty (will be nil after coercion)
+    (should-error (dsel-adapter-parse-output adapter sig response)
+                  :type 'error)))
+
 (ert-deftest dsel-test-adapter-parse-empty-values ()
   "Test parsing when field values are empty."
   (let* ((sig (dsel-make-signature
                "Process form data"
                :input-fields (list '(:name form :type string :desc "Form data"))
                :output-fields (list '(:name name :type string :desc "Person's name")
-                                    '(:name age :type number :desc "Person's age")
+                                    '(:name age :type number :desc "Person's age" :optional t)
                                     '(:name comments :type string :desc "Additional comments"))))
          (adapter (make-dsel-default-chat-adapter))
          (response "Name: John Smith
@@ -201,7 +254,7 @@ Comments: ")
 
     ;; Test parsed result with empty values
     (should (listp result))
-    (should (= (length result) 3))
+    (should (= (length result) 2)) ;; Now only 2 fields should be included
 
     ;; Check non-empty value
     (should (equal (cdr (assq 'name result)) "John Smith"))
@@ -209,9 +262,8 @@ Comments: ")
     ;; Check empty values - string field should be empty string
     (should (equal (cdr (assq 'comments result)) ""))
 
-    ;; Check empty values - number field value behavior depends on implementation
-    ;; Current behavior returns empty string when can't convert to number
-    (should (stringp (cdr (assq 'age result))))))
+    ;; Check empty values - number field should not be present in the result
+    (should (eq nil (assq 'age result)))))
 
 (ert-deftest dsel-test-adapter-parse-whitespace-variations ()
   "Test parsing with various whitespace in field values and prefixes."

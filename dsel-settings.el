@@ -75,11 +75,11 @@ PLIST may include the following keywords:
       (setq dsel-settings--lm lm))
     (when adapter
       (setq dsel-settings--adapter adapter))
-    (when (not (eq 'unknown (car (memq :log-buffer plist))))
+    (when (plist-member plist :log-buffer)
       (setq dsel-log-buffer log-buffer))
     (when log-level
       (setq dsel-log-level log-level))
-    (when (not (eq 'unknown (car (memq :log-to-messages plist))))
+    (when (plist-member plist :log-to-messages)
       (setq dsel-log-to-messages log-to-messages))))
 
 (defmacro dsel-with-settings (bindings &rest body)

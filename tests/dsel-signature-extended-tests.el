@@ -123,7 +123,7 @@
 
 (ert-deftest dsel-test-signature-array-requires-items ()
   "Test that array type fields require :items."
-  (should-error 
+  (should-error
    (dsel-make-signature 
     "Test array validation"
     :input-fields (list '(:name tags :type array :desc "Tags without items")))

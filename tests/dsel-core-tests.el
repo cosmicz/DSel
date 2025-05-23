@@ -1,6 +1,6 @@
 ;;; dsel-core-tests.el --- Tests for dsel core functionality  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024
+;; Copyright (C) 2025
 
 ;; Author: Cosmin-Octavian C. (cosmicz)
 ;; Keywords: llm, tools

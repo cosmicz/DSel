@@ -244,80 +244,164 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
     ;; Pass 2: Coerce values and handle optional/required
     (dolist (field-plist output-field-plists)
       (let* ((field-name (plist-get field-plist :name))
-             (field-optional (plist-get field-plist :optional))
-             (raw-value (gethash field-name raw-parsed-fields)))
-        (if raw-value
-            (let ((coerced-value (dsel--coerce-value raw-value field-plist)))
-              (if (or coerced-value (eq coerced-value t) (eq coerced-value nil) (stringp coerced-value))
-                  (push (cons field-name coerced-value) final-result-alist)
-                (dsel--log 'warning "PARSE-OUTPUT: Coerced value for '%s' was nil and not added (type: %s, raw: %S)"
-                           field-name (plist-get field-plist :type) raw-value)))
-          (unless field-optional
-            (error "Required output field '%s' was not found in LLM response" field-name)))))
+             (field-type (plist-get field-plist :type))
+             (is-optional (plist-get field-plist :optional))
+             ;; Use a unique sentinel to distinguish "not found" from "found with nil value"
+             ;; (though raw-value from parsing pass 1 should always be a string if found).
+             (raw-value (gethash field-name raw-parsed-fields :_dsel_field_not_found_)))
+
+        (if (not (eq raw-value :_dsel_field_not_found_))
+            ;; Field's prefix was found in the LLM response, and raw-value is its string content.
+            (let ((coerced-value nil))
+              ;; Attempt to coerce the raw string value.
+              (condition-case err
+                  (setq coerced-value (dsel--coerce-value raw-value field-plist))
+                (error ; Catch errors specifically from dsel--coerce-value
+                 (error "Error coercing value for field '%s' (type %s) from raw value '%s': %s"
+                        field-name field-type raw-value (error-message-string err))))
+
+              (cond
+               ;; Case 1: Problematic nil for a REQUIRED non-boolean field
+               ((and (null coerced-value) (not is-optional) (not (eq field-type 'boolean)))
+                (error "Required field '%s' (type %s) was present but value empty/unparseable, resulting in nil."
+                       field-name field-type))
+
+               ;; Case 2: Nil for an OPTIONAL non-boolean field -> OMIT from results
+               ((and (null coerced-value) is-optional (not (eq field-type 'boolean)))
+                (dsel--log 'debug "PARSE-OUTPUT: Skipping optional field '%s' (type %s) because its coerced value is nil."
+                           field-name field-type))
+
+               ;; Case 3: All other valid coerced values (including non-nil, boolean nil, empty strings for string type)
+               (t
+                (dsel--log 'debug "PARSE-OUTPUT: Adding field '%s' with coerced value: %S" field-name coerced-value)
+                (push (cons field-name coerced-value) final-result-alist))))
+          ;; ELSE: Field's prefix was NOT found in the LLM response.
+          (unless is-optional
+            (error "Required output field '%s' (type %s) was not found in LLM response"
+                   field-name field-type)))))
+
     (nreverse final-result-alist)))
 
-(defun dsel--coerce-value (string-value field-plist)
-  "Coerce STRING-VALUE according to the type specified in FIELD-PLIST.
-Handles enhanced field types including enum, array, and object."
-  (let ((type (plist-get field-plist :type))
-        (enum-values (plist-get field-plist :enum)))
-    (cond
-     (enum-values
-      (let ((trimmed-value (string-trim string-value)))
-        (if (and (vectorp enum-values) (cl-find trimmed-value enum-values :test #'string=))
-            trimmed-value
-          (error "Value '%s' not in enum %s for field '%s'"
-                 trimmed-value enum-values (plist-get field-plist :name)))))
-     ((eq type 'string) string-value)
-     ((eq type 'integer)
-      (let ((trimmed (string-trim string-value)))
-        (cond
-         ;; Empty string - return it as-is for empty fields
-         ((string= "" trimmed) trimmed)
-         (t (let ((num (string-to-number trimmed)))
-              ;; Check if conversion worked - string-to-number returns 0 for invalid input
-              (if (or (string-match-p "^\\s*0+\\s*$" trimmed)  ; It's actually "0"
-                      (not (zerop num)))                       ; Or conversion worked
-                  num
-                (if (plist-get field-plist :name)
-                    (error "Invalid integer format '%s' for field '%s'"
-                           trimmed (plist-get field-plist :name))
-                  trimmed)))))))
-     ((eq type 'number)
-      (let ((trimmed (string-trim string-value)))
-        (cond
-         ;; Empty string - return it as-is for empty fields
-         ((string= "" trimmed) trimmed)
-         (t (let ((num (string-to-number trimmed)))
-              ;; Check if conversion worked - string-to-number returns 0 for invalid input
-              (if (or (string-match-p "^\\s*0+\\s*$" trimmed)  ; It's actually "0"
-                      (not (zerop num)))                       ; Or conversion worked
-                  num
-                (if (plist-get field-plist :name)
-                    (error "Invalid number format '%s' for field '%s'"
-                           trimmed (plist-get field-plist :name))
-                  trimmed)))))))
-     ((eq type 'boolean)
-      (cond
-       ((string-match-p "\\`\\(?:t\\|true\\|yes\\)\\'" (downcase string-value)) t)
-       ((string-match-p "\\`\\(?:nil\\|false\\|no\\)\\'" (downcase string-value)) nil)
-       (t nil)))
-     ((eq type 'array)
-      (condition-case err
-          (json-read-from-string string-value) ; Use json-read for vectors
-        (error
-         ;; Try comma-separated format before giving up
-         (if (string-match-p "," string-value)
-             (mapcar #'string-trim (split-string string-value "," t))
-           (error "Invalid array format '%s' for field '%s': %s"
-                  string-value (plist-get field-plist :name) (error-message-string err))))))
-     ((eq type 'object)
-      (condition-case err
-          (json-read-from-string string-value) ; json-read uses alist for objects
-        (error
-         (error "Invalid object format '%s' for field '%s': %s"
-                string-value (plist-get field-plist :name) (error-message-string err)))))
-     (t string-value))))
+(cl-defun dsel--coerce-value (string-value field-plist)
+  "Coerce STRING-VALUE to the type specified in FIELD-PLIST.
+Returns the coerced value.
+Signals an error for invalid formats, enum mismatches, or unrecognized boolean values.
+
+Behavior for empty input strings (`trimmed-value` being `\"\"`):
+- `:type string`: returns `\"\"`.
+- `:type integer`, `:type number`: returns `nil` (representing 'no value provided').
+- `:type boolean`: **errors**, as empty string is not a recognized boolean.
+- `:type array`, `:type object`: returns `nil` (representing 'no value provided').
+
+Type coercion details:
+- `:type string`: Returns the trimmed string.
+- `:type integer` / `:type number`: Parses the string. Returns `nil` for empty strings.
+  Errors on invalid numeric formats or non-integer values for `integer` type.
+- `:type boolean`: Parses recognized true/false strings (case-insensitive).
+  Errors for any other input, including empty strings.
+- `:type array`: Parses JSON arrays or, as fallback, comma-separated values.
+  Returns `nil` for empty strings. Errors if JSON is invalid or not an array.
+- `:type object`: Parses JSON objects. Returns `nil` for empty strings.
+  Errors if JSON is invalid or not an object (alist).
+- `:enum [...]`: Validates `trimmed-value` against string representations of enum options.
+  If valid, `trimmed-value` is then coerced per its `:type`. Errors if not in enum.
+- Unknown types: Logs warning, returns trimmed string."
+  (let* ((field-name (plist-get field-plist :name))
+         (original-string-value string-value) ; Keep for error messages
+         (trimmed-value (if string-value (string-trim string-value) ""))
+         (type (plist-get field-plist :type))
+         (enum-values (plist-get field-plist :enum)))
+
+    ;; 1. Handle original string-value being nil (not just empty after trim)
+    (when (null string-value)
+      (cl-return-from dsel--coerce-value
+        (pcase type
+          ((or 'integer 'number 'array 'object) nil)
+          ('boolean (error "Cannot coerce nil to boolean for field '%s'. Expected a string" field-name)) ; Nil string is invalid for boolean
+          ('string "") ; A nil input string becomes an empty string for type string.
+          (_ "")))) ; Default for other unknown types if string-value itself is nil
+
+    ;; 2. Enum Validation (if enum is present)
+    (when enum-values
+      (unless (and (vectorp enum-values)
+                   (cl-find-if (lambda (allowed-val)
+                                 (string= trimmed-value
+                                          (if (stringp allowed-val)
+                                              allowed-val
+                                            (format "%s" allowed-val))))
+                               enum-values))
+        (error "Value '%s' (from input '%s') not in enum %s for field '%s'"
+               trimmed-value original-string-value enum-values field-name)))
+    ;; If execution reaches here, enum validation passed or no enum.
+    ;; `trimmed-value` is the string to be coerced.
+
+    ;; 3. Regular type coercion
+    (pcase type
+      ('string
+       trimmed-value)
+
+      ((or 'integer 'number)
+       (if (string-empty-p trimmed-value)
+           nil
+         (let ((num (string-to-number trimmed-value)))
+           (if (and (zerop num) (not (string-match-p "\\`[+-]?0\\(?:\\.0*\\)?\\'" trimmed-value)))
+               (error "Invalid %s format '%s' (from input '%s') for field '%s'"
+                      type trimmed-value original-string-value field-name)
+             (if (and (eq type 'integer) (floatp num) (/= num (truncate num)))
+                 (error "Non-integer number %S (from input '%s') received for integer field '%s'"
+                        num original-string-value field-name)
+               num)))))
+
+      ('boolean
+       (let ((lower-trimmed (downcase trimmed-value)))
+         (cond
+          ((member lower-trimmed '("t" "true" "yes" "1")) t)
+          ((member lower-trimmed '("nil" "false" "no" "0")) nil)
+          (t (error "Invalid boolean value '%s' (from input '%s') for field '%s'. Expected true/false/yes/no/t/nil/0/1 or their synonyms"
+                    trimmed-value original-string-value field-name)))))
+
+      ('array
+       (if (string-empty-p trimmed-value)
+           nil
+         (let (parsed-val)
+           (condition-case err
+               (progn
+                 (setq parsed-val (json-read-from-string trimmed-value))
+                 (unless (or (vectorp parsed-val) (listp parsed-val))
+                   (error "Parsed JSON value for field '%s' (from input '%s') is not an array structure: %S"
+                          field-name original-string-value parsed-val))
+                 parsed-val)
+             (json-error
+              (if (string-match-p "," trimmed-value)
+                  (mapcar #'string-trim (split-string trimmed-value "," t))
+                (error "Invalid array format for field '%s' (from input '%s'). Not valid JSON ('%s') and not comma-separated"
+                       field-name original-string-value (error-message-string err))))
+             (error
+              (error "Error parsing array for field '%s' (from input '%s'): %s"
+                     field-name original-string-value (error-message-string err)))))))
+
+      ('object
+       (if (string-empty-p trimmed-value)
+           nil
+         (let (parsed-val)
+           (condition-case err
+               (progn
+                 (setq parsed-val (json-read-from-string trimmed-value))
+                 (unless (and (listp parsed-val) (or (null parsed-val) (consp (car parsed-val))))
+                   (error "Parsed JSON value for field '%s' (from input '%s') is not an object structure (alist): %S"
+                          field-name original-string-value parsed-val))
+                 parsed-val)
+             (json-error
+              (error "Invalid object format for field '%s' (from input '%s'). Not valid JSON: '%s'"
+                     field-name original-string-value (error-message-string err)))
+             (error
+              (error "Error parsing object for field '%s' (from input '%s'): %s"
+                     field-name original-string-value (error-message-string err)))))))
+
+      (_
+       (dsel--log 'warning "Coercing field '%s': Unknown type '%s'. Returning trimmed string value: \"%s\" (from input \"%s\")"
+                  field-name type trimmed-value original-string-value)
+       trimmed-value))))
 
 (provide 'dsel-adapter)
 ;;; dsel-adapter.el ends here
