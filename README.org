@@ -51,21 +51,34 @@ Handles LLM prompt formatting and output parsing.
 ** Setup
 
 1. Clone the repository:
-   #+begin_src bash
-   git clone https://github.com/cosmicz/dsel.git
-   #+end_src
+#+begin_src bash
+git clone https://github.com/cosmicz/dsel.git
+#+end_src
 
 2. Add to your load path:
-   #+begin_src elisp
-   (add-to-list 'load-path "~/path/to/dsel")
-   (require 'dsel)
-   #+end_src
+#+begin_src elisp
+(add-to-list 'load-path "~/path/to/dsel")
+(require 'dsel)
+#+end_src
 
 3. Configure with your preferred LLM provider:
-   #+begin_src elisp
-   (require 'llm-ollama) ;; or another provider
-   (dsel-configure :lm (make-llm-ollama :chat-model "gemma3:12b"))
-   #+end_src
+#+begin_src elisp
+(require 'llm-ollama) ;; or another provider
+(dsel-configure :lm (make-llm-ollama :chat-model "gemma3:12b"))
+#+end_src
+
+Cloud can be faster (than my M2 ):
+#+BEGIN_SRC elisp
+(require 'llm-openai)
+(setq llm-warn-on-nonfree nil)
+(dsel-configure
+ :log-level 'info
+ :trace 'my/dsel-traces
+ :lm (make-llm-openai-compatible
+      :url "https://openrouter.ai/api/v1"
+      :key (my/get-openrouter-api-key)
+      :chat-model "google/gemini-2.5-flash-preview-05-20"))
+#+END_SRC
 
 * Quick Start
 
