@@ -18,29 +18,6 @@ DSel is built around several key principles:
 - *Native Optimization*: Improve LLM behavior with data-driven refinements
 - *Emacs Integration*: Seamless integration with the Emacs ecosystem
 
-* Core Concepts
-
-** Signature (=dsel-signature=)
-A schema that defines the inputs and outputs for an LLM task, along with instructions.
-
-** Example (=dsel-example=)
-Data instances used for few-shot learning or evaluation.
-
-** Predictor (=dsel-predict=)
-Basic module for making LLM calls using a signature.
-
-** Chain of Thought (=dsel-chain-of-thought=)
-Module that prompts the LLM for step-by-step reasoning before answering.
-
-** Module (=dsel-module=)
-Base class for all runnable components in DSel.
-
-** Optimizer (=dsel-optimizer=)
-Compiles modules to improve their performance, such as selecting the best few-shot examples.
-
-** Adapter (=dsel-adapter=)
-Handles LLM prompt formatting and output parsing.
-
 * Installation
 
 ** Requirements
@@ -97,6 +74,29 @@ Cloud can be faster (than my M2 ):
   (message "Answer: %s" (dsel-get-field prediction 'answer)))
 ;; Output: Answer: The capital of France is Paris.
 #+end_src
+
+* Core Concepts
+
+** Signature (=dsel-signature=)
+A schema that defines the inputs and outputs for an LLM task, along with instructions.
+
+** Example (=dsel-example=)
+Data instances used for few-shot learning or evaluation.
+
+** Predictor (=dsel-predict=)
+Basic module for making LLM calls using a signature.
+
+** Chain of Thought (=dsel-chain-of-thought=)
+Module that prompts the LLM for step-by-step reasoning before answering.
+
+** Module (=dsel-module=)
+Base class for all runnable components in DSel.
+
+** Optimizer (=dsel-optimizer=)
+Compiles modules to improve their performance, such as selecting the best few-shot examples.
+
+** Adapter (=dsel-adapter=)
+Handles LLM prompt formatting and output parsing.
 
 * Key Features & Usage
 
