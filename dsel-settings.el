@@ -56,7 +56,7 @@ This works even when `dsel-log-buffer' is nil, allowing logging to *Messages* on
   "Default `dsel-adapter` instance.")
 
 (defvar dsel-settings--trace nil
-  "List to store (module-instance inputs-alist prediction) tuples.")
+  "Symbol for the list to add traces to, or nil to disable tracing.")
 
 (defun dsel-configure (&rest plist)
   "Configure global DSel settings.
@@ -65,12 +65,14 @@ PLIST may include the following keywords:
 - :adapter The default adapter to use
 - :log-buffer Name of log buffer (nil to disable logging)
 - :log-level Minimum log level to display (debug, info, warning, error)
-- :log-to-messages Whether to log to *Messages* buffer"
+- :log-to-messages Whether to log to *Messages* buffer
+- :trace Symbol for the list to add traces to (nil to disable tracing)"
   (let ((lm (plist-get plist :lm))
         (adapter (plist-get plist :adapter))
         (log-buffer (plist-get plist :log-buffer))
         (log-level (plist-get plist :log-level))
-        (log-to-messages (plist-get plist :log-to-messages)))
+        (log-to-messages (plist-get plist :log-to-messages))
+        (trace (plist-get plist :trace)))
     (when lm
       (setq dsel-settings--lm lm))
     (when adapter
@@ -80,7 +82,9 @@ PLIST may include the following keywords:
     (when log-level
       (setq dsel-log-level log-level))
     (when (plist-member plist :log-to-messages)
-      (setq dsel-log-to-messages log-to-messages))))
+      (setq dsel-log-to-messages log-to-messages))
+    (when (plist-member plist :trace)
+      (setq dsel-settings--trace trace))))
 
 (defmacro dsel-with-settings (bindings &rest body)
   "Execute BODY with the given SETTINGS temporarily bound.

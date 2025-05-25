@@ -85,8 +85,10 @@
                          :raw-response raw-llm-response
                          :errors (nreverse accumulated-errors))))))
       (when dsel-settings--trace
-        (push (list predict current-inputs-alist prediction)
-              dsel-settings--trace))
+        (let ((trace-list (symbol-value dsel-settings--trace)))
+          (set dsel-settings--trace
+               (cons (list predict current-inputs-alist prediction)
+                     trace-list))))
       prediction)))
 
 (cl-defmethod dsel-module-reset-optimizable-state ((predict dsel-predict))

@@ -87,5 +87,37 @@
       (should (string= (dsel-get-field second-demo 'input) "sample2"))
       (should (string= (dsel-get-field second-demo 'output) "result2")))))
 
+;; Test tracing functionality
+(ert-deftest dsel-test-predict-tracing ()
+  "Test that predictions are added to the trace when tracing is enabled."
+  (let* ((sig (dsel-make-signature
+               "Test tracing"
+               :name 'test-trace-signature
+               :input-fields (list '(:name input :type string :desc "Input value"))
+               :output-fields (list '(:name output :type string :desc "Output value" :prefix "Output:"))))
+         (predictor (dsel-make-predict sig :lm dsel-test-llm-provider))
+         (dsel-test-llm-prompt-to-response-map
+          `((,(dsel--format-input-fields sig '((input . "test"))) . "Output:traced\n\n"))))
+
+    ;; Define a variable for tracing
+    (defvar my-trace-list nil)
+    (setq my-trace-list nil)
+
+    ;; Test with tracing disabled
+    (let ((dsel-settings--trace nil))
+      (dsel-forward predictor :input "test")
+      (should (null my-trace-list)))
+
+    ;; Test with tracing enabled
+    (let ((dsel-settings--trace 'my-trace-list))
+      (dsel-forward predictor :input "test")
+      (should (= (length my-trace-list) 1))
+      (let ((trace-entry (car my-trace-list)))
+        (should (= (length trace-entry) 3))
+        (should (eq (car trace-entry) predictor))
+        (should (equal (cadr trace-entry) '((input . "test"))))
+        (should (dsel-prediction-p (caddr trace-entry)))
+        (should (equal (dsel-get-field (caddr trace-entry) 'output) "traced"))))))
+
 (provide 'dsel-predictors-tests)
 ;;; dsel-predictors-tests.el ends here
