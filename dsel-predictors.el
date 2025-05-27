@@ -154,5 +154,16 @@ PLIST may include:
      :compiled-p nil
      :predictors nil)))
 
+;; Chain-of-thought aliases
+(defalias 'dsel-make-cot #'dsel-make-chain-of-thought)
+
+;; For the struct, we need to create constructor aliases manually since cl-defstruct
+;; creates functions with specific names that can't be easily aliased
+(defalias 'dsel-cot-p #'dsel-chain-of-thought-p)
+(defalias 'dsel-cot-signature #'dsel-chain-of-thought-signature)
+(defalias 'dsel-cot-config #'dsel-chain-of-thought-config)
+(defalias 'dsel-cot-demos #'dsel-chain-of-thought-demos)
+(defalias 'dsel-cot-lm #'dsel-chain-of-thought-lm)
+
 (provide 'dsel-predictors)
 ;;; dsel-predictors.el ends here

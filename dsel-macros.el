@@ -147,5 +147,8 @@ If :name is in PLIST, it will be ignored as optimizers don't have internal names
         ,@plist)
        ,(format "DSel optimizer of type %s." type))))
 
+;; Chain-of-thought aliases
+(defalias 'dsel-defcot #'dsel-defchain-of-thought)
+
 (provide 'dsel-macros)
 ;;; dsel-macros.el ends here
