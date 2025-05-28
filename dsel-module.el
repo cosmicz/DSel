@@ -19,7 +19,7 @@
 (cl-defstruct dsel-module
   "Base module structure for building LLM application components."
   name                                  ; Symbol: name of the module instance
-  (submodules nil :type list)           ; List: child modules/predictors
+  (submodules nil :type list)           ; Alist: (name . module) pairs for child modules/predictors
   compiled-p)                           ; Boolean: if the module has been optimized
 
 (cl-defgeneric dsel-forward (module &rest kwargs)
@@ -32,13 +32,23 @@ This is the main execution method for modules.")
 (cl-defmethod dsel-collect-predictors ((module dsel-module))
   "Recursively collect all predictor instances from MODULE and its sub-modules."
   (let ((collected '()))
-    ;; Iterate over direct children in the 'submodules' slot
-    (dolist (child (dsel-module-submodules module))
-      (if (and (fboundp 'dsel-predict-p) (dsel-predict-p child))
-          (push child collected)
-        (when (dsel-module-p child)
-          (setq collected (append (dsel-collect-predictors child) collected)))))
+    ;; Iterate over direct children in the 'submodules' slot (now an alist)
+    (dolist (child-pair (dsel-module-submodules module))
+      (let ((child (cdr child-pair)))
+        (if (and (fboundp 'dsel-predict-p) (dsel-predict-p child))
+            (push child collected)
+          (when (dsel-module-p child)
+            (setq collected (append (dsel-collect-predictors child) collected))))))
     (nreverse collected)))
+
+(cl-defgeneric dsel-module-get-submodule (module name)
+  "Get a submodule from MODULE by NAME.
+Returns nil if no submodule with NAME is found.")
+
+(cl-defmethod dsel-module-get-submodule ((module dsel-module) name)
+  "Get a submodule from MODULE by NAME.
+Returns nil if no submodule with NAME is found."
+  (cdr (assq name (dsel-module-submodules module))))
 
 (cl-defgeneric dsel-module-named-predictors (module)
   "Return an alist of (name . predict-instance) within MODULE.
@@ -75,15 +85,18 @@ This finds named predictors at any depth.")
 (cl-defmethod dsel-module-deepcopy ((module dsel-module))
   "Return a deep copy of MODULE."
   (let* ((copy (copy-dsel-module module))
-         ;; Deep copy predictors recursively
-         (predictor-copies 
-          (mapcar (lambda (pred)
-                    (if (dsel-module-p pred)
-                        (dsel-module-deepcopy pred)
-                      ;; For non-module objects, use a simple copy
-                      (copy-sequence pred)))
+         ;; Deep copy submodules recursively (now from alist)
+         (submodule-copies
+          (mapcar (lambda (submodule-pair)
+                    (let ((submodule-name (car submodule-pair))
+                          (submodule (cdr submodule-pair)))
+                      (cons submodule-name
+                            (if (dsel-module-p submodule)
+                                (dsel-module-deepcopy submodule)
+                              ;; For non-module objects, use a simple copy
+                              (copy-sequence submodule)))))
                   (dsel-module-submodules module))))
-    (setf (dsel-module-submodules copy) predictor-copies)
+    (setf (dsel-module-submodules copy) submodule-copies)
     copy))
 
 (provide 'dsel-module)

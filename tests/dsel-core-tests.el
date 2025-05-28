@@ -88,5 +88,23 @@
     (should (equal (dsel-example-field prediction 'text) "I love this product!"))
     (should (equal (dsel-example-field prediction 'sentiment) "positive"))))
 
+;; Test dsel-module-get-submodule
+
+(ert-deftest dsel-test-module-get-submodule ()
+  "Test getting a submodule by name."
+  (let* ((module (make-dsel-module :name 'parent-module))
+         (child1 (make-dsel-module :name 'child1))
+         (child2 (make-dsel-module :name 'child2))
+         (submodules (list (cons 'child1 child1)
+                           (cons 'child2 child2))))
+
+    ;; Set up module with submodules
+    (setf (dsel-module-submodules module) submodules)
+
+    ;; Test retrieving submodules by name
+    (should (eq (dsel-module-get-submodule module 'child1) child1))
+    (should (eq (dsel-module-get-submodule module 'child2) child2))
+    (should (eq (dsel-module-get-submodule module 'non-existent) nil))))
+
 (provide 'dsel-core-tests)
 ;;; dsel-core-tests.el ends here
