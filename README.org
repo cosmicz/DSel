@@ -3,6 +3,9 @@
 #+DATE: 2025
 
 * Overview
+:PROPERTIES:
+:ID:       c40fd4da-bb5c-4661-9c38-6c353a6f4b2e
+:END:
 
 DSel is a declarative, modular, and optimizable framework for working with Large Language Models (LLMs) in Emacs Lisp.
 Inspired by Python's DSPy, it provides a structured approach to building LLM-powered applications with type checking, schema validation, and optimization capabilities.
@@ -75,32 +78,10 @@ Cloud can be faster (than my M2 ):
 ;; Output: Answer: The capital of France is Paris.
 #+end_src
 
-* Core Concepts
+* Core Concepts & Key Features
 
 ** Signature (=dsel-signature=)
 A schema that defines the inputs and outputs for an LLM task, along with instructions.
-
-** Example (=dsel-example=)
-Data instances used for few-shot learning or evaluation.
-
-** Predictor (=dsel-predict=)
-Basic module for making LLM calls using a signature.
-
-** Chain of Thought (=dsel-chain-of-thought=)
-Module that prompts the LLM for step-by-step reasoning before answering.
-
-** Module (=dsel-module=)
-Base class for all runnable components in DSel.
-
-** Optimizer (=dsel-optimizer=)
-Compiles modules to improve their performance, such as selecting the best few-shot examples.
-
-** Adapter (=dsel-adapter=)
-Handles LLM prompt formatting and output parsing.
-
-* Key Features & Usage
-
-** Defining Signatures
 
 A signature declares the inputs and outputs for an LLM task, including types and validation:
 
@@ -123,33 +104,8 @@ A signature declares the inputs and outputs for an LLM task, including types and
                     :optional t)))
 #+end_src
 
-** Creating Predictors
-
-Predictors are modules that execute LLM calls with a specific signature:
-
-#+BEGIN_SRC elisp
-;; Simple predictor
-(dsel-defpredict sentiment-predictor sentiment-signature)
-
-;; Predictor with configuration options
-(dsel-defpredict configured-predictor sentiment-signature
-  :config '(:temperature 0.2
-            :max-tokens 100))
-#+END_SRC
-
-** Running Predictions
-
-Generate predictions by calling `dsel-forward`:
-
-#+begin_src elisp
-(let ((prediction (dsel-forward sentiment-predictor :text "I love this product!")))
-  (message "Sentiment: %s" (dsel-get-field prediction 'sentiment))
-  (message "Confidence: %s" (dsel-get-field prediction 'confidence)))
-#+end_src
-
-** Using Few-Shot Examples
-
-Improve performance with few-shot learning examples:
+** Example (=dsel-example=)
+Data instances used for few-shot learning or evaluation. Examples help improve performance through few-shot learning:
 
 #+begin_src elisp
 ;; Create individual examples
@@ -167,9 +123,31 @@ Improve performance with few-shot learning examples:
   :demos sentiment-examples)
 #+end_src
 
-** Chain of Thought Reasoning
+** Predictor (=dsel-predict=)
+Basic module for making LLM calls using a signature.
 
-For complex reasoning tasks, use chain-of-thought predictors:
+Predictors are modules that execute LLM calls with a specific signature:
+
+#+BEGIN_SRC elisp
+;; Simple predictor
+(dsel-defpredict sentiment-predictor sentiment-signature)
+
+;; Predictor with configuration options
+(dsel-defpredict configured-predictor sentiment-signature
+  :config '(:temperature 0.2
+            :max-tokens 100))
+#+END_SRC
+
+Generate predictions by calling `dsel-forward`:
+
+#+begin_src elisp
+(let ((prediction (dsel-forward sentiment-predictor :text "I love this product!")))
+  (message "Sentiment: %s" (dsel-get-field prediction 'sentiment))
+  (message "Confidence: %s" (dsel-get-field prediction 'confidence)))
+#+end_src
+
+** Chain of Thought (=dsel-chain-of-thought=)
+Module that prompts the LLM for step-by-step reasoning before answering. For complex reasoning tasks, use chain-of-thought predictors:
 
 #+begin_src elisp
 ;; Create a chain-of-thought predictor
@@ -185,7 +163,48 @@ For complex reasoning tasks, use chain-of-thought predictors:
   (message "Sentiment: %s" (dsel-get-field result 'sentiment)))
 #+end_src
 
-** Complex Nested Types
+** Module (=dsel-module=)
+Base class for all runnable components in DSel.
+
+** Optimizer (=dsel-optimizer=)
+Compiles modules to improve their performance, such as selecting the best few-shot examples.
+
+Improve performance by selecting the best few-shot examples:
+
+#+begin_src elisp
+;; Define an optimizer that selects the most relevant examples
+(dsel-defoptimizer sentiment-optimizer labeled-fewshot
+  :metric (lambda (gold pred)
+            (string= (dsel-get-field gold 'sentiment)
+                     (dsel-get-field pred 'sentiment)))
+  :k 3) ;; Number of examples to select
+
+;; Create an optimized predictor
+(setq optimized-predictor
+      (dsel-compile sentiment-optimizer sentiment-predictor :trainset sentiment-examples))
+
+;; Use the optimized predictor
+(dsel-forward optimized-predictor :text "This product is just okay.")
+#+end_src
+
+** Adapter (=dsel-adapter=)
+Handles LLM prompt formatting and output parsing.
+
+* Advanced Features
+
+** Type System
+
+DSel provides a rich type system for input and output fields:
+- =string=: Text values
+- =integer=: Whole numbers
+- =number=: Floating-point numbers
+- =boolean=: True/false values
+- =array=: Lists of values
+- =object=: Key-value structures
+- =enum=: Values from a predefined set
+
+
+Each type is validated and properly coerced from the LLM's text response.
 
 DSel supports complex nested data structures with full type validation:
 
@@ -230,42 +249,6 @@ Accessing nested fields is straightforward:
   (let ((metadata (alist-get 'metadata product)))
     (alist-get 'rating metadata)))  ;; => 4.8
 #+end_src
-
-** Optimizing with Labeled Few-Shot
-
-Improve performance by selecting the best few-shot examples:
-
-#+begin_src elisp
-;; Define an optimizer that selects the most relevant examples
-(dsel-defoptimizer sentiment-optimizer labeled-fewshot
-  :metric (lambda (gold pred)
-            (string= (dsel-get-field gold 'sentiment)
-                     (dsel-get-field pred 'sentiment)))
-  :k 3) ;; Number of examples to select
-
-;; Create an optimized predictor
-(setq optimized-predictor 
-      (dsel-compile sentiment-optimizer sentiment-predictor :trainset sentiment-examples))
-
-;; Use the optimized predictor
-(dsel-forward optimized-predictor :text "This product is just okay.")
-#+end_src
-
-* Advanced Features
-
-** Type System
-
-DSel provides a rich type system for input and output fields:
-
-- =string=: Text values
-- =integer=: Whole numbers
-- =number=: Floating-point numbers
-- =boolean=: True/false values
-- =array=: Lists of values
-- =object=: Key-value structures
-- =enum=: Values from a predefined set
-
-Each type is validated and properly coerced from the LLM's text response.
 
 ** Field Validation
 
