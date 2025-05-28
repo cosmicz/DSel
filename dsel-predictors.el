@@ -28,6 +28,22 @@
   (demos nil :type list)                ; list of dsel-example: few-shot examples
   lm)                                   ; struct: specific llm.el provider
 
+(cl-defun dsel-make-predict (signature &key name config demos lm)
+  "Create a new predictor from SIGNATURE and keyword arguments.
+Keyword arguments:
+- NAME: symbol for the predictor name
+- CONFIG: plist of LM-specific parameters
+- DEMOS: list of few-shot examples
+- LM: specific llm.el provider"
+  (make-dsel-predict
+   :name name
+   :signature signature
+   :config config
+   :demos demos
+   :lm lm
+   :compiled-p nil
+   :submodules nil))
+
 (cl-defmethod dsel-collect-predictors ((predict dsel-predict))
   "For a dsel-predict, return a list containing just itself."
   (list predict))
@@ -96,45 +112,30 @@
   (setf (dsel-module-compiled-p predict) nil)
   (setf (dsel-predict-demos predict) nil))
 
-(defun dsel-make-predict (signature &rest plist)
-  "Create a new predictor from SIGNATURE and properties in PLIST.
-PLIST may include:
-- :config plist of LM-specific parameters
-- :demos list of few-shot examples
-- :lm specific llm.el provider
-- :name symbol for the predictor name"
-  (make-dsel-predict
-   :name (plist-get plist :name)
-   :signature signature
-   :config (plist-get plist :config)
-   :demos (plist-get plist :demos)
-   :lm (plist-get plist :lm)
-   :compiled-p nil
-   :predictors nil))
 
 (cl-defstruct (dsel-chain-of-thought (:include dsel-predict))
   "Structure for a chain-of-thought reasoning module that extends dsel-predict.")
 
-(defun dsel-make-chain-of-thought (original-signature &rest plist)
-  "Create a new chain-of-thought module from ORIGINAL-SIGNATURE and PLIST.
-PLIST may include:
-- :rationale-field-name symbol for the rationale field
-- :rationale-field-prefix string prefix for the rationale field
-- :rationale-field-desc string description for the rationale field
-- :lm specific llm.el provider
-- :config plist of LM-specific parameters
-- :demos list of dsel-example objects for few-shot prompting
-- :name symbol for the module name"
+(cl-defun dsel-make-chain-of-thought (original-signature &key name config demos lm
+                                                         rationale-field-name
+                                                         rationale-field-prefix
+                                                         rationale-field-desc)
+  "Create a new chain-of-thought module from ORIGINAL-SIGNATURE and keyword arguments.
+Keyword arguments:
+- NAME: symbol for the module name
+- CONFIG: plist of LM-specific parameters
+- DEMOS: list of dsel-example objects for few-shot prompting
+- LM: specific llm.el provider
+- RATIONALE-FIELD-NAME: symbol for the rationale field
+- RATIONALE-FIELD-PREFIX: string prefix for the rationale field
+- RATIONALE-FIELD-DESC: string description for the rationale field"
   (let* ((instructions (dsel-signature-instructions original-signature))
          (sig-name (dsel-signature-name original-signature))
          (input-fields (dsel-signature-input-fields original-signature))
          (output-fields (dsel-signature-output-fields original-signature))
-         (rationale-field-name (or (plist-get plist :rationale-field-name)
-                                   'rationale))
-         (rationale-field-prefix (or (plist-get plist :rationale-field-prefix)
-                                     "Rationale:"))
-         (rationale-field-desc (or (plist-get plist :rationale-field-desc)
-                                   "Your step-by-step reasoning process"))
+         (rationale-field-name (or rationale-field-name 'rationale))
+         (rationale-field-prefix (or rationale-field-prefix "Rationale:"))
+         (rationale-field-desc (or rationale-field-desc "Your step-by-step reasoning process"))
          ;; Create rationale field as a plist with :name keyword
          (rationale-field `(:name ,rationale-field-name
                                   :type string
@@ -146,13 +147,13 @@ PLIST may include:
                          :input-fields input-fields
                          :output-fields (cons rationale-field output-fields))))
     (make-dsel-chain-of-thought
-     :name (plist-get plist :name)
+     :name name
      :signature cot-signature
-     :lm (plist-get plist :lm)
-     :config (plist-get plist :config)
-     :demos (plist-get plist :demos)
+     :lm lm
+     :config config
+     :demos demos
      :compiled-p nil
-     :predictors nil)))
+     :submodules nil)))
 
 ;; Chain-of-thought aliases
 (defalias 'dsel-make-cot #'dsel-make-chain-of-thought)

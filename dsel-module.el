@@ -19,7 +19,7 @@
 (cl-defstruct dsel-module
   "Base module structure for building LLM application components."
   name                                  ; Symbol: name of the module instance
-  (predictors nil :type list)           ; List: child modules/predictors
+  (submodules nil :type list)           ; List: child modules/predictors
   compiled-p)                           ; Boolean: if the module has been optimized
 
 (cl-defgeneric dsel-forward (module &rest kwargs)
@@ -32,8 +32,8 @@ This is the main execution method for modules.")
 (cl-defmethod dsel-collect-predictors ((module dsel-module))
   "Recursively collect all predictor instances from MODULE and its sub-modules."
   (let ((collected '()))
-    ;; Iterate over direct children in the 'predictors' slot
-    (dolist (child (dsel-module-predictors module))
+    ;; Iterate over direct children in the 'submodules' slot
+    (dolist (child (dsel-module-submodules module))
       (if (and (fboundp 'dsel-predict-p) (dsel-predict-p child))
           (push child collected)
         (when (dsel-module-p child)
@@ -82,8 +82,8 @@ This finds named predictors at any depth.")
                         (dsel-module-deepcopy pred)
                       ;; For non-module objects, use a simple copy
                       (copy-sequence pred)))
-                  (dsel-module-predictors module))))
-    (setf (dsel-module-predictors copy) predictor-copies)
+                  (dsel-module-submodules module))))
+    (setf (dsel-module-submodules copy) predictor-copies)
     copy))
 
 (provide 'dsel-module)
