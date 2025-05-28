@@ -448,34 +448,34 @@ Feedback: The summary is accurate. When writing summaries, be concise.")
 (ert-deftest dsel-test-coercion-basic-types ()
   "Test coercion of basic field types."
   ;; String coercion
-  (should (equal "test" (dsel--coerce-value "test" '(:type string))))
+  (should (equal "test" (dsel--coerce-value "test" (dsel-make-field :name 'test :type 'string))))
 
   ;; Integer coercion - valid
-  (should (equal 42 (dsel--coerce-value "42" '(:type integer))))
+  (should (equal 42 (dsel--coerce-value "42" (dsel-make-field :name 'test :type 'integer))))
 
   ;; Integer coercion - invalid (but with name field)
-  (should-error (dsel--coerce-value "not a number" '(:type integer :name test-integer)))
+  (should-error (dsel--coerce-value "not a number" (dsel-make-field :name 'test-integer :type 'integer)))
 
   ;; Number coercion
-  (should (equal 3.14 (dsel--coerce-value "3.14" '(:type number))))
+  (should (equal 3.14 (dsel--coerce-value "3.14" (dsel-make-field :name 'test :type 'number))))
 
   ;; Boolean coercion - true values
-  (should (eq t (dsel--coerce-value "true" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "yes" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "t" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "TRUE" '(:type boolean))))
+  (should (eq t (dsel--coerce-value "true" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq t (dsel--coerce-value "yes" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq t (dsel--coerce-value "t" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq t (dsel--coerce-value "TRUE" (dsel-make-field :name 'test :type 'boolean))))
 
   ;; Boolean coercion - false values
-  (should (eq nil (dsel--coerce-value "false" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "no" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "nil" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "FALSE" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "0" '(:type boolean)))))
+  (should (eq nil (dsel--coerce-value "false" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "no" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "nil" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "FALSE" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "0" (dsel-make-field :name 'test :type 'boolean)))))
 
 (ert-deftest dsel-test-coercion-complex-types ()
   "Test coercion of complex field types."
   ;; Array coercion from JSON string
-  (let ((json-array (dsel--coerce-value "[\"red\", \"green\", \"blue\"]" '(:type array))))
+  (let ((json-array (dsel--coerce-value "[\"red\", \"green\", \"blue\"]" (dsel-make-field :name 'test :type 'array :items '(:type string)))))
     (should (sequencep json-array))
     (should (= (length json-array) 3))
     (should (equal (aref json-array 0) "red"))
@@ -483,7 +483,7 @@ Feedback: The summary is accurate. When writing summaries, be concise.")
     (should (equal (aref json-array 2) "blue")))
 
   ;; Array coercion from comma-separated string
-  (let ((csv-array (dsel--coerce-value "red, green, blue" '(:type array))))
+  (let ((csv-array (dsel--coerce-value "red, green, blue" (dsel-make-field :name 'test :type 'array :items '(:type string)))))
     (should (listp csv-array))
     (should (= (length csv-array) 3))
     (should (equal (nth 0 csv-array) "red"))
@@ -491,12 +491,12 @@ Feedback: The summary is accurate. When writing summaries, be concise.")
     (should (equal (nth 2 csv-array) "blue")))
 
   ;; Empty array
-  (let ((empty-array (dsel--coerce-value "[]" '(:type array))))
+  (let ((empty-array (dsel--coerce-value "[]" (dsel-make-field :name 'test :type 'array :items '(:type string)))))
     (should (sequencep empty-array))
     (should (= (length empty-array) 0)))
 
   ;; Object coercion from JSON string
-  (let ((json-obj (dsel--coerce-value "{\"name\": \"John\", \"age\": 30}" '(:type object))))
+  (let ((json-obj (dsel--coerce-value "{\"name\": \"John\", \"age\": 30}" (dsel-make-field :name 'test :type 'object :properties '((:name name :type string) (:name age :type integer))))))
     (should (listp json-obj))
     (should (assq 'name json-obj))
     (should (assq 'age json-obj))
@@ -504,23 +504,23 @@ Feedback: The summary is accurate. When writing summaries, be concise.")
     (should (equal (cdr (assq 'age json-obj)) 30)))
 
   ;; Empty object
-  (let ((empty-obj (dsel--coerce-value "{}" '(:type object))))
+  (let ((empty-obj (dsel--coerce-value "{}" (dsel-make-field :name 'test :type 'object :properties '((:name name :type string))))))
     (should (listp empty-obj))
     (should (equal empty-obj nil)))
 
   ;; Malformed JSON string handling
-  (should-error (dsel--coerce-value "[malformed array" '(:type array :name malformed-test)))
-  (should-error (dsel--coerce-value "{malformed json" '(:type object :name malformed-test))))
+  (should-error (dsel--coerce-value "[malformed array" (dsel-make-field :name 'malformed-test :type 'array :items '(:type string))))
+  (should-error (dsel--coerce-value "{malformed json" (dsel-make-field :name 'malformed-test :type 'object :properties '((:name name :type string))))))
 
 (ert-deftest dsel-test-coercion-enum-validation ()
   "Test enum validation during coercion."
   ;; Valid enum value
   (should (equal "red"
-                 (dsel--coerce-value "red" '(:type string :enum ["red" "green" "blue"]))))
+                 (dsel--coerce-value "red" (dsel-make-field :name 'test :type 'string :enum ["red" "green" "blue"]))))
 
   ;; Invalid enum value - should raise an error
   (should-error
-   (dsel--coerce-value "purple" '(:type string :enum ["red" "green" "blue"]))
+   (dsel--coerce-value "purple" (dsel-make-field :name 'test :type 'string :enum ["red" "green" "blue"]))
    :type 'error))
 
 (ert-deftest dsel-test-prediction-error-helpers ()
@@ -566,23 +566,23 @@ Feedback: The summary is accurate. When writing summaries, be concise.")
 (ert-deftest dsel-test-coercion-error-scenarios ()
   "Test various coercion error scenarios."
   ;; Boolean coercion errors
-  (should-error (dsel--coerce-value "" '(:type boolean :name test-bool)))
-  (should-error (dsel--coerce-value "maybe" '(:type boolean :name test-bool)))
-  (should-error (dsel--coerce-value "1.5" '(:type boolean :name test-bool)))
+  (should-error (dsel--coerce-value "" (dsel-make-field :name 'test-bool :type 'boolean)))
+  (should-error (dsel--coerce-value "maybe" (dsel-make-field :name 'test-bool :type 'boolean)))
+  (should-error (dsel--coerce-value "1.5" (dsel-make-field :name 'test-bool :type 'boolean)))
   
   ;; Numeric coercion errors with helpful messages
-  (should-error (dsel--coerce-value "abc" '(:type integer :name test-int)))
-  (should-error (dsel--coerce-value "3.14" '(:type integer :name test-int)))
+  (should-error (dsel--coerce-value "abc" (dsel-make-field :name 'test-int :type 'integer)))
+  (should-error (dsel--coerce-value "3.14" (dsel-make-field :name 'test-int :type 'integer)))
   ;; Note: "42px" parses as 42 with string-to-number, so we skip this check
   ;; Note: "1e10" is actually valid scientific notation and gets converted to 10000000000 by string-to-number
   
   ;; Array/Object JSON parsing errors  
-  (should-error (dsel--coerce-value "{broken json" '(:type object :name test-obj)))
-  (should-error (dsel--coerce-value "completely invalid array" '(:type array :name test-arr)))
-  (should-error (dsel--coerce-value "not-json" '(:type object :name test-obj)))
+  (should-error (dsel--coerce-value "{broken json" (dsel-make-field :name 'test-obj :type 'object :properties '((:name name :type string)))))
+  (should-error (dsel--coerce-value "completely invalid array" (dsel-make-field :name 'test-arr :type 'array :items '(:type string))))
+  (should-error (dsel--coerce-value "not-json" (dsel-make-field :name 'test-obj :type 'object :properties '((:name name :type string)))))
   
   ;; Enum validation errors
-  (should-error (dsel--coerce-value "purple" '(:type string :enum ["red" "green" "blue"] :name test-enum))))
+  (should-error (dsel--coerce-value "purple" (dsel-make-field :name 'test-enum :type 'string :enum ["red" "green" "blue"]))))
 
 (ert-deftest dsel-test-mixed-success-and-error-fields ()
   "Test parsing when some fields succeed and others fail."
@@ -629,48 +629,48 @@ Good_boolean: true")
 (ert-deftest dsel-test-boolean-coercion-edge-cases ()
   "Test boolean coercion with various valid and invalid inputs."
   ;; Valid true values (case-insensitive)
-  (should (eq t (dsel--coerce-value "true" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "TRUE" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "True" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "yes" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "YES" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "t" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "T" '(:type boolean))))
-  (should (eq t (dsel--coerce-value "1" '(:type boolean))))
+  (should (eq t (dsel--coerce-value "true" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq t (dsel--coerce-value "TRUE" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq t (dsel--coerce-value "True" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq t (dsel--coerce-value "yes" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq t (dsel--coerce-value "YES" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq t (dsel--coerce-value "t" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq t (dsel--coerce-value "T" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq t (dsel--coerce-value "1" (dsel-make-field :name 'test :type 'boolean))))
   
   ;; Valid false values (case-insensitive)
-  (should (eq nil (dsel--coerce-value "false" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "FALSE" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "False" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "no" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "NO" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "nil" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "NIL" '(:type boolean))))
-  (should (eq nil (dsel--coerce-value "0" '(:type boolean))))
+  (should (eq nil (dsel--coerce-value "false" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "FALSE" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "False" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "no" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "NO" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "nil" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "NIL" (dsel-make-field :name 'test :type 'boolean))))
+  (should (eq nil (dsel--coerce-value "0" (dsel-make-field :name 'test :type 'boolean))))
   
   ;; Invalid boolean values should error
-  (should-error (dsel--coerce-value "" '(:type boolean :name test-bool)))
-  (should-error (dsel--coerce-value "   " '(:type boolean :name test-bool))) ; whitespace only
-  (should-error (dsel--coerce-value "maybe" '(:type boolean :name test-bool)))
-  (should-error (dsel--coerce-value "2" '(:type boolean :name test-bool)))
-  (should-error (dsel--coerce-value "on" '(:type boolean :name test-bool)))
-  (should-error (dsel--coerce-value "off" '(:type boolean :name test-bool))))
+  (should-error (dsel--coerce-value "" (dsel-make-field :name 'test-bool :type 'boolean)))
+  (should-error (dsel--coerce-value "   " (dsel-make-field :name 'test-bool :type 'boolean))) ; whitespace only
+  (should-error (dsel--coerce-value "maybe" (dsel-make-field :name 'test-bool :type 'boolean)))
+  (should-error (dsel--coerce-value "2" (dsel-make-field :name 'test-bool :type 'boolean)))
+  (should-error (dsel--coerce-value "on" (dsel-make-field :name 'test-bool :type 'boolean)))
+  (should-error (dsel--coerce-value "off" (dsel-make-field :name 'test-bool :type 'boolean))))
 
 (ert-deftest dsel-test-nil-input-coercion ()
   "Test coercion behavior with nil string inputs."
   ;; String type with nil input should return empty string
-  (should (equal "" (dsel--coerce-value nil '(:type string))))
+  (should (equal "" (dsel--coerce-value nil (dsel-make-field :name 'test :type 'string))))
   
   ;; Numeric types with nil input should return nil
-  (should (null (dsel--coerce-value nil '(:type integer))))
-  (should (null (dsel--coerce-value nil '(:type number))))
+  (should (null (dsel--coerce-value nil (dsel-make-field :name 'test :type 'integer))))
+  (should (null (dsel--coerce-value nil (dsel-make-field :name 'test :type 'number))))
   
   ;; Array/Object types with nil input should return nil
-  (should (null (dsel--coerce-value nil '(:type array))))
-  (should (null (dsel--coerce-value nil '(:type object))))
+  (should (null (dsel--coerce-value nil (dsel-make-field :name 'test :type 'array :items '(:type string)))))
+  (should (null (dsel--coerce-value nil (dsel-make-field :name 'test :type 'object :properties '((:name name :type string))))))
   
   ;; Boolean type with nil input should error
-  (should-error (dsel--coerce-value nil '(:type boolean :name test-bool))))
+  (should-error (dsel--coerce-value nil (dsel-make-field :name 'test-bool :type 'boolean))))
 
 (ert-deftest dsel-test-error-message-content ()
   "Test that error messages contain helpful information."

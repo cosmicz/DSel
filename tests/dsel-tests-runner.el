@@ -91,7 +91,9 @@ The first match is used. Tests can `let`-bind this.")
   "Setup the test environment for DSel."
   (setq max-lisp-eval-depth 1000
         print-level 1000
-        print-length 1000)
+        print-length 1000
+        backtrace-line-length 250
+        ert-batch-backtrace-right-margin 250)
   (setq dsel-test-llm-provider (make-llm-fake
                                 :output-to-buffer "*dsel-test-llm-fake-output-buffer*"
                                 :chat-action-func dsel-test-llm-chat-response))

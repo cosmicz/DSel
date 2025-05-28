@@ -136,13 +136,14 @@ Keyword arguments:
          (rationale-field-name (or rationale-field-name 'rationale))
          (rationale-field-prefix (or rationale-field-prefix "Rationale:"))
          (rationale-field-desc (or rationale-field-desc "Your step-by-step reasoning process"))
-         ;; Create rationale field as a plist with :name keyword
-         (rationale-field `(:name ,rationale-field-name
-                                  :type string
-                                  :desc ,rationale-field-desc
-                                  :prefix ,rationale-field-prefix))
-         (cot-signature (dsel-make-signature
-                         instructions
+         ;; Create rationale field as struct
+         (rationale-field (dsel-make-field :name rationale-field-name
+                                           :type 'string
+                                           :desc rationale-field-desc
+                                           :prefix rationale-field-prefix))
+         ;; Create new signature by copying the original and adding rationale field
+         (cot-signature (make-dsel-signature
+                         :instructions instructions
                          :name sig-name
                          :input-fields input-fields
                          :output-fields (cons rationale-field output-fields))))

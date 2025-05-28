@@ -35,16 +35,16 @@ Return an llm-chat-prompt structure.")
   "Parse LLM-RESPONSE-STRING with the given ADAPTER and SIGNATURE.
 Return a list of field result plists, each with :name, :value, and :error keys.")
 
-(defun dsel--format-field-description (field-plist)
-  "Format a rich field description for FIELD-PLIST.
-FIELD-PLIST is a property list with :name, :type, etc."
-  (let* ((field-name (plist-get field-plist :name))
-         (field-type (plist-get field-plist :type))
-         (field-desc (plist-get field-plist :desc))
-         (field-optional (plist-get field-plist :optional))
-         (field-enum (plist-get field-plist :enum))
-         (field-items (plist-get field-plist :items))
-         (field-properties (plist-get field-plist :properties))
+(defun dsel--format-field-description (field-struct)
+  "Format a rich field description for FIELD-STRUCT.
+FIELD-STRUCT is a dsel-field struct."
+  (let* ((field-name (dsel-field-name field-struct))
+         (field-type (dsel-field-type field-struct))
+         (field-desc (dsel-field-desc field-struct))
+         (field-optional (dsel-field-optional field-struct))
+         (field-enum (dsel-field-enum field-struct))
+         (field-items (dsel-field-items field-struct))
+         (field-properties (dsel-field-properties field-struct))
          (type-desc (format "%s%s"
                             (or field-type 'string)
                             (if field-optional " (optional)" ""))))
@@ -53,13 +53,13 @@ FIELD-PLIST is a property list with :name, :type, etc."
      (when (and field-enum (vectorp field-enum) (> (length field-enum) 0))
        (format "\n  Allowed values: %s"
                (mapconcat (lambda (val) (format "\"%s\"" val)) (append field-enum nil) ", ")))
-     (when (and (eq field-type 'array) field-items (plist-get field-items :type))
-       (format "\n  Array items are of type: %s" (plist-get field-items :type)))
+     (when (and (eq field-type 'array) field-items)
+       (format "\n  Array items are of type: %s" (dsel-field-type field-items)))
      (when (and (eq field-type 'object) field-properties)
        (format "\n  Object with properties: %s"
-               (mapconcat (lambda (prop-plist) (format "`%s` (%s)"
-                                                       (plist-get prop-plist :name)
-                                                       (plist-get prop-plist :type)))
+               (mapconcat (lambda (prop-struct) (format "`%s` (%s)"
+                                                        (dsel-field-name prop-struct)
+                                                        (dsel-field-type prop-struct)))
                           field-properties ", "))))))
 
 (cl-defmethod dsel-adapter-format-prompt ((adapter dsel-default-chat-adapter)
@@ -84,10 +84,10 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
           "\n\n"
           "Please provide your response with each field clearly demarcated. For example:\n"
           (mapconcat
-           (lambda (field-plist)
+           (lambda (field-struct)
              (format "%s [Value for %s]"
-                     (plist-get field-plist :prefix)
-                     (plist-get field-plist :name)))
+                     (dsel-field-prefix field-struct)
+                     (dsel-field-name field-struct)))
            (dsel-signature-output-fields signature)
            "\n")))
         (current-input-content
@@ -108,10 +108,10 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
 (defun dsel--format-input-fields (signature inputs-alist)
   "Format the INPUTS-ALIST according to the SIGNATURE's input field definitions."
   (let ((result ""))
-    (dolist (field-plist (dsel-signature-input-fields signature))
-      (let* ((field-name (plist-get field-plist :name))
-             (field-prefix (plist-get field-plist :prefix))
-             (format-fn (or (plist-get field-plist :format-fn) #'format))
+    (dolist (field-struct (dsel-signature-input-fields signature))
+      (let* ((field-name (dsel-field-name field-struct))
+             (field-prefix (dsel-field-prefix field-struct))
+             (format-fn #'format)
              (input-pair (assq field-name inputs-alist)))
         (when input-pair
           (let ((value (cdr input-pair)))
@@ -124,10 +124,10 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
 (defun dsel--format-output-fields (signature outputs-alist)
   "Format the OUTPUTS-ALIST according to the SIGNATURE's output field definitions."
   (let ((result ""))
-    (dolist (field-plist (dsel-signature-output-fields signature))
-      (let* ((field-name (plist-get field-plist :name))
-             (field-prefix (plist-get field-plist :prefix))
-             (format-fn (or (plist-get field-plist :format-fn) #'format))
+    (dolist (field-struct (dsel-signature-output-fields signature))
+      (let* ((field-name (dsel-field-name field-struct))
+             (field-prefix (dsel-field-prefix field-struct))
+             (format-fn #'format)
              (output-pair (assq field-name outputs-alist)))
         (when output-pair
           (let ((value (cdr output-pair)))
@@ -137,38 +137,38 @@ CURRENT-INPUTS-ALIST is an alist of (field-name . value) for the current query."
                                  "\n\n"))))))
     result))
 
-(defun dsel--find-earliest-matching-prefix (text start-pos output-field-plists)
-  "Find the earliest occurring field from OUTPUT-FIELD-PLISTS in TEXT at or after START-POS.
-Returns (list MATCHING-FIELD-PLIST PREFIX-START-INDEX ACTUAL-PREFIX-END-INDEX) or nil."
-  (let ((best-match-field-plist nil)
+(defun dsel--find-earliest-matching-prefix (text start-pos output-field-structs)
+  "Find the earliest occurring field from OUTPUT-FIELD-STRUCTS in TEXT at or after START-POS.
+Returns (list MATCHING-FIELD-STRUCT PREFIX-START-INDEX ACTUAL-PREFIX-END-INDEX) or nil."
+  (let ((best-match-field-struct nil)
         (earliest-match-start-idx -1) ; Stores the (match-beginning 0) of the earliest prefix
         (best-match-prefix-actual-end -1)) ; Stores the (match-end 0) of the regex for that prefix
-    (dolist (field-plist output-field-plists)
-      (let* ((prefix-from-sig (plist-get field-plist :prefix))
+    (dolist (field-struct output-field-structs)
+      (let* ((prefix-from-sig (dsel-field-prefix field-struct))
              ;; Ensure prefix isn't empty, which would cause issues with regexp-quote and matching
-             (_ (when (string-empty-p prefix-from-sig) (error "Empty prefix found for field %s" (plist-get field-plist :name))))
+             (_ (when (string-empty-p prefix-from-sig) (error "Empty prefix found for field %s" (dsel-field-name field-struct))))
              (regex-to-find-prefix (concat (regexp-quote prefix-from-sig) "\\s-*"))
              (match-start (string-match regex-to-find-prefix text start-pos)))
         (when match-start
           (if (or (= earliest-match-start-idx -1) (< match-start earliest-match-start-idx))
               (setq earliest-match-start-idx match-start
-                    best-match-field-plist field-plist
+                    best-match-field-struct field-struct
                     best-match-prefix-actual-end (match-end 0)))))) ; This is (match-end 0) of the regex, i.e., after prefix and spaces
-    (if best-match-field-plist
-        (list best-match-field-plist earliest-match-start-idx best-match-prefix-actual-end)
+    (if best-match-field-struct
+        (list best-match-field-struct earliest-match-start-idx best-match-prefix-actual-end)
       nil)))
 
-(defun dsel--extract-raw-value-and-next-pos (text current-field-plist value-start-idx all-output-field-plists)
-  "Extract raw string value for CURRENT-FIELD-PLIST starting at VALUE-START-IDX.
+(defun dsel--extract-raw-value-and-next-pos (text current-field-struct value-start-idx all-output-field-structs)
+  "Extract raw string value for CURRENT-FIELD-STRUCT starting at VALUE-START-IDX.
 Value ends before the next known prefix or at end of TEXT.
 Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
   (let ((value-end-idx (length text)) ; Default to end of string
         raw-value)
     ;; Find where this field's value ends
     (let ((next-known-prefix-earliest-start-pos -1))
-      (dolist (next-candidate-plist all-output-field-plists)
-        (unless (eq current-field-plist next-candidate-plist)
-          (let* ((next-prefix-from-sig (plist-get next-candidate-plist :prefix))
+      (dolist (next-candidate-struct all-output-field-structs)
+        (unless (eq current-field-struct next-candidate-struct)
+          (let* ((next-prefix-from-sig (dsel-field-prefix next-candidate-struct))
                  (next-regex (concat (regexp-quote next-prefix-from-sig) "\\s-*"))
                  (match-pos (string-match next-regex text value-start-idx)))
             (when match-pos
@@ -186,7 +186,7 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
                                          signature llm-response-string)
   "Parse LLM-RESPONSE-STRING using the default adapter and SIGNATURE."
   (let ((raw-parsed-fields (make-hash-table :test 'eq))
-        (output-field-plists (dsel-signature-output-fields signature))
+        (output-field-structs (dsel-signature-output-fields signature))
         (current-pos 0)
         (loop-count 0))
 
@@ -194,18 +194,18 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
 
     (while (< current-pos (length llm-response-string))
       (setq loop-count (1+ loop-count))
-      (when (> loop-count (+ 5 (* 2 (length output-field-plists))))
+      (when (> loop-count (+ 5 (* 2 (length output-field-structs))))
         (dsel--log 'error "PARSE-OUTPUT: ERROR - Loop guard hit (%d loops). Pos: %d. Aborting." loop-count current-pos)
         (error "Parser loop stuck (guard hit)")
         (cl-return)) ; Should not be reached due to error
 
       (dsel--log 'debug "PARSE-OUTPUT: WHILE iter #%d, current_pos: %d" loop-count current-pos)
-      (let ((match-info (dsel--find-earliest-matching-prefix llm-response-string current-pos output-field-plists)))
+      (let ((match-info (dsel--find-earliest-matching-prefix llm-response-string current-pos output-field-structs)))
         (if match-info
-            (let* ((matched-field-plist (nth 0 match-info))
+            (let* ((matched-field-struct (nth 0 match-info))
                    (prefix-start-idx (nth 1 match-info))
                    (actual-prefix-end-idx (nth 2 match-info))
-                   (field-name (plist-get matched-field-plist :name))
+                   (field-name (dsel-field-name matched-field-struct))
                    extraction-result raw-value new-pos)
 
               (dsel--log 'debug "PARSE-OUTPUT: Found field '%s' starting at index %d (prefix ends at %d)."
@@ -222,9 +222,9 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
 
               (setq extraction-result (dsel--extract-raw-value-and-next-pos
                                        llm-response-string
-                                       matched-field-plist
+                                       matched-field-struct
                                        actual-prefix-end-idx ; value_start_idx
-                                       output-field-plists))
+                                       output-field-structs))
               (setq raw-value (car extraction-result)
                     new-pos (cadr extraction-result))
 
@@ -242,10 +242,10 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
 
     ;; Pass 2: Coerce values and handle optional/required, returning field result plists
     (let ((field-results nil))
-      (dolist (field-plist output-field-plists)
-        (let* ((field-name (plist-get field-plist :name))
-               (field-type (plist-get field-plist :type))
-               (is-optional (plist-get field-plist :optional))
+      (dolist (field-struct output-field-structs)
+        (let* ((field-name (dsel-field-name field-struct))
+               (field-type (dsel-field-type field-struct))
+               (is-optional (dsel-field-optional field-struct))
                ;; Use a unique sentinel to distinguish "not found" from "found with nil value"
                (raw-value (gethash field-name raw-parsed-fields :_dsel_field_not_found_))
                (current-field-value nil)
@@ -256,7 +256,7 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
               (progn
                 ;; Attempt to coerce the raw string value
                 (condition-case err
-                    (setq current-field-value (dsel--coerce-value raw-value field-plist))
+                    (setq current-field-value (dsel--coerce-value raw-value field-struct))
                   (error
                    ;; Coercion failed
                    (setq current-field-value nil
@@ -298,8 +298,8 @@ Returns (list RAW-VALUE-STRING NEW-POS-AFTER-VALUE)."
 
       (nreverse field-results))))
 
-(cl-defun dsel--coerce-value (string-value field-plist)
-  "Coerce STRING-VALUE to the type specified in FIELD-PLIST.
+(cl-defun dsel--coerce-value (string-value field-struct)
+  "Coerce STRING-VALUE to the type specified in FIELD-STRUCT.
 Returns the coerced value.
 Signals an error for invalid formats, enum mismatches, or unrecognized boolean values.
 
@@ -322,11 +322,11 @@ Type coercion details:
 - `:enum [...]`: Validates `trimmed-value` against string representations of enum options.
   If valid, `trimmed-value` is then coerced per its `:type`. Errors if not in enum.
 - Unknown types: Logs warning, returns trimmed string."
-  (let* ((field-name (plist-get field-plist :name))
+  (let* ((field-name (dsel-field-name field-struct))
          (original-string-value string-value) ; Keep for error messages
          (trimmed-value (if string-value (string-trim string-value) ""))
-         (type (plist-get field-plist :type))
-         (enum-values (plist-get field-plist :enum)))
+         (type (dsel-field-type field-struct))
+         (enum-values (dsel-field-enum field-struct)))
 
     ;; 1. Handle original string-value being nil (not just empty after trim)
     (when (null string-value)

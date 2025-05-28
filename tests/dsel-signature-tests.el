@@ -44,14 +44,14 @@
           (sentiment-field (dsel-signature-get-output-field sig 'sentiment)))
       (should text-field)
       (should sentiment-field)
-      (should (eq 'text (plist-get text-field :name)))
-      (should (eq 'string (plist-get text-field :type)))
-      (should (eq 'sentiment (plist-get sentiment-field :name)))
-      (should (eq 'string (plist-get sentiment-field :type)))
+      (should (eq 'text (dsel-field-name text-field)))
+      (should (eq 'string (dsel-field-type text-field)))
+      (should (eq 'sentiment (dsel-field-name sentiment-field)))
+      (should (eq 'string (dsel-field-type sentiment-field)))
       
       ;; Test default prefix generation
-      (should (string= "Text:" (plist-get text-field :prefix)))
-      (should (string= "Sentiment:" (plist-get sentiment-field :prefix))))))
+      (should (string= "Text:" (dsel-field-prefix text-field)))
+      (should (string= "Sentiment:" (dsel-field-prefix sentiment-field))))))
 
 (ert-deftest dsel-test-json-schema-field-names ()
   "Test field name extraction functions."
@@ -101,16 +101,16 @@
 
     ;; Test nested types
     (let* ((results-field (dsel-signature-get-output-field sig 'results))
-           (items (plist-get results-field :items))
-           (properties (plist-get items :properties))
+           (items (dsel-field-items results-field))
+           (properties (dsel-field-properties items))
            (title-field (dsel-get-field-by-name properties 'title))
            (tags-field (dsel-get-field-by-name properties 'tags)))
       
-      (should (eq 'array (plist-get results-field :type)))
-      (should (eq 'object (plist-get items :type)))
-      (should (eq 'string (plist-get title-field :type)))
-      (should (eq 'array (plist-get tags-field :type)))
-      (should (eq 'string (plist-get (plist-get tags-field :items) :type))))))
+      (should (eq 'array (dsel-field-type results-field)))
+      (should (eq 'object (dsel-field-type items)))
+      (should (eq 'string (dsel-field-type title-field)))
+      (should (eq 'array (dsel-field-type tags-field)))
+      (should (eq 'string (dsel-field-type (dsel-field-items tags-field)))))))
 
 ;;; Validation Tests
 
@@ -151,7 +151,7 @@
   ;; Instead, we can check that it defaults to "".
   (let ((sig (dsel-make-signature "Test field without desc"
                                   :input-fields (list '(:name field :type string)))))
-    (should (string= (plist-get (dsel-signature-get-input-field sig 'field) :desc) "")))
+    (should (string= (dsel-field-desc (dsel-signature-get-input-field sig 'field)) "")))
 
   ;; Array without items
   (should-error

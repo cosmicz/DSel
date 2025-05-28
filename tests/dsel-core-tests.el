@@ -39,8 +39,8 @@
     ;; Test default prefix generation
     (let ((text-field (dsel-signature-get-input-field sig 'text))
           (sentiment-field (dsel-signature-get-output-field sig 'sentiment)))
-      (should (string= (plist-get text-field :prefix) "Text:"))
-      (should (string= (plist-get sentiment-field :prefix) "Sentiment:")))))
+      (should (string= (dsel-field-prefix text-field) "Text:"))
+      (should (string= (dsel-field-prefix sentiment-field) "Sentiment:")))))
 
 ;; Test dsel-example
 

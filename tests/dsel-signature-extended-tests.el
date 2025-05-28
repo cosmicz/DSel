@@ -38,8 +38,8 @@
     (should (string= instructions (dsel-signature-instructions sig)))
     (let ((in-field (dsel-signature-get-input-field sig 'inField))
           (out-field (dsel-signature-get-output-field sig 'outField)))
-      (should (string= "Infield:" (plist-get in-field :prefix)))
-      (should (string= "Outfield:" (plist-get out-field :prefix))))))
+      (should (string= "Infield:" (dsel-field-prefix in-field)))
+      (should (string= "Outfield:" (dsel-field-prefix out-field))))))
 
 (ert-deftest dsel-test-signature-with-enum ()
   "Test signature creation with an enum field."
@@ -52,7 +52,7 @@
                         :desc "Choose a color"
                         :enum ["red" "green" "blue"])))))
     (let ((field (dsel-signature-get-input-field sig 'color-choice)))
-      (should (equal ["red" "green" "blue"] (plist-get field :enum))))))
+      (should (equal ["red" "green" "blue"] (dsel-field-enum field))))))
 
 (ert-deftest dsel-test-signature-with-optional-field ()
   "Test signature creation with an optional field."
@@ -68,7 +68,7 @@
                         :desc "Details"
                         :optional t)))))
     (let ((details-field (dsel-signature-get-input-field sig 'item-details)))
-      (should (plist-get details-field :optional)))))
+      (should (dsel-field-optional details-field)))))
 
 (ert-deftest dsel-test-signature-with-array-of-strings ()
   "Test signature with an array of strings."
@@ -81,8 +81,8 @@
                         :desc "A list of tags"
                         :items (:type string))))))
     (let ((tags-field (dsel-signature-get-output-field sig 'tags)))
-      (should (eq 'array (plist-get tags-field :type)))
-      (should (equal '(:type string) (plist-get tags-field :items))))))
+      (should (eq 'array (dsel-field-type tags-field)))
+      (should (eq 'string (dsel-field-type (dsel-field-items tags-field)))))))
 
 (ert-deftest dsel-test-signature-with-object ()
   "Test signature with an object field."
@@ -102,21 +102,21 @@
                                             :optional t))
                         :required (name))))))
     (let ((user-field (dsel-signature-get-output-field sig 'user)))
-      (should (eq 'object (plist-get user-field :type)))
-      (let ((props (plist-get user-field :properties)))
+      (should (eq 'object (dsel-field-type user-field)))
+      (let ((props (dsel-field-properties user-field)))
         (should (listp props))
         (let ((name-prop (dsel-get-field-by-name props 'name))
               (age-prop (dsel-get-field-by-name props 'age)))
-          (should (eq 'string (plist-get name-prop :type)))
-          (should (string= "User's name" (plist-get name-prop :desc)))
-          (should (eq 'integer (plist-get age-prop :type)))
-          (should (plist-get age-prop :optional))))
-      (should (equal '(name) (plist-get user-field :required))))))
+          (should (eq 'string (dsel-field-type name-prop)))
+          (should (string= "User's name" (dsel-field-desc name-prop)))
+          (should (eq 'integer (dsel-field-type age-prop)))
+          (should (dsel-field-optional age-prop))))
+      (should (equal '(name) (dsel-field-required user-field))))))
 
 (ert-deftest dsel-test-signature-missing-required-plist-keys ()
   "Test that `dsel-make-signature` errors if :type are missing (:desc is optional)."
   (let ((sig (dsel-make-signature "Test with no desc" :input-fields (list '(:name no-desc :type string)))))
-    (should (string= (plist-get (dsel-signature-get-input-field sig 'no-desc) :desc) "")))
+    (should (string= (dsel-field-desc (dsel-signature-get-input-field sig 'no-desc)) "")))
 
   (should-error (dsel-make-signature "Test" :input-fields (list '(:name no-type :desc "test")))
                 :type 'error))
@@ -147,10 +147,10 @@
                                            :items (:type array
                                                          :items (:type number)))))))
     (let* ((matrix-field (dsel-signature-get-input-field sig 'matrix))
-           (items-plist (plist-get matrix-field :items)))
-      (should (eq 'array (plist-get matrix-field :type)))
-      (should (eq 'array (plist-get items-plist :type)))
-      (should (eq 'number (plist-get (plist-get items-plist :items) :type))))))
+           (items-plist (dsel-field-items matrix-field)))
+      (should (eq 'array (dsel-field-type matrix-field)))
+      (should (eq 'array (dsel-field-type items-plist)))
+      (should (eq 'number (dsel-field-type (dsel-field-items items-plist)))))))
 
 (ert-deftest dsel-test-signature-with-complex-object ()
   "Test signature with complex nested object field."
@@ -174,23 +174,23 @@
                                                  :required (created-at)))
                              :required (name price))))))
     (let* ((product-field (dsel-signature-get-output-field sig 'product))
-           (props (plist-get product-field :properties))
+           (props (dsel-field-properties product-field))
            (categories-field (dsel-get-field-by-name props 'categories))
            (metadata-field (dsel-get-field-by-name props 'metadata)))
       
       ;; Check top-level object
-      (should (eq 'object (plist-get product-field :type)))
-      (should (equal '(name price) (plist-get product-field :required)))
+      (should (eq 'object (dsel-field-type product-field)))
+      (should (equal '(name price) (dsel-field-required product-field)))
       
       ;; Check array field
-      (should (eq 'array (plist-get categories-field :type)))
-      (should (equal '(:type string) (plist-get categories-field :items)))
+      (should (eq 'array (dsel-field-type categories-field)))
+      (should (eq 'string (dsel-field-type (dsel-field-items categories-field))))
       
       ;; Check nested object
-      (should (eq 'object (plist-get metadata-field :type)))
-      (let ((metadata-props (plist-get metadata-field :properties)))
+      (should (eq 'object (dsel-field-type metadata-field)))
+      (let ((metadata-props (dsel-field-properties metadata-field)))
         (should (dsel-get-field-by-name metadata-props 'created-at)))
-      (should (equal '(created-at) (plist-get metadata-field :required))))))
+      (should (equal '(created-at) (dsel-field-required metadata-field))))))
 
 (provide 'dsel-signature-extended-tests)
 ;;; dsel-signature-extended-tests.el ends here

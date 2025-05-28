@@ -32,10 +32,10 @@
                                                           :properties ((:name name :type string :desc "User name")
                                                                        (:name age :type integer :desc "User age"))))))))
     (let ((users-field (dsel-signature-get-output-field sig 'users)))
-      (should (eq 'array (plist-get users-field :type)))
-      (let ((items (plist-get users-field :items)))
-        (should (eq 'object (plist-get items :type)))
-        (let ((props (plist-get items :properties)))
+      (should (eq 'array (dsel-field-type users-field)))
+      (let ((items (dsel-field-items users-field)))
+        (should (eq 'object (dsel-field-type items)))
+        (let ((props (dsel-field-properties items)))
           (should (dsel-get-field-by-name props 'name))
           (should (dsel-get-field-by-name props 'age)))))))
 
@@ -70,13 +70,13 @@
                                            :items (:type array
                                                          :items (:type number))))))))
     (let* ((matrix-field (dsel-signature-get-output-field sig 'matrix))
-           (level1-items (plist-get matrix-field :items))
-           (level2-items (plist-get level1-items :items))
-           (level3-items (plist-get level2-items :items)))
-      (should (eq 'array (plist-get matrix-field :type)))
-      (should (eq 'array (plist-get level1-items :type)))
-      (should (eq 'array (plist-get level2-items :type)))
-      (should (eq 'number (plist-get level3-items :type))))))
+           (level1-items (dsel-field-items matrix-field))
+           (level2-items (dsel-field-items level1-items))
+           (level3-items (dsel-field-items level2-items)))
+      (should (eq 'array (dsel-field-type matrix-field)))
+      (should (eq 'array (dsel-field-type level1-items)))
+      (should (eq 'array (dsel-field-type level2-items)))
+      (should (eq 'number (dsel-field-type level3-items))))))
 
 ;;; Tests for Object Field Types
 
@@ -107,22 +107,22 @@
                                                               (:name last-login :type string :desc "Last login date"))))
                              :required (name))))))
     (let* ((user-field (dsel-signature-get-output-field sig 'user))
-           (properties (plist-get user-field :properties))
+           (properties (dsel-field-properties user-field))
            (contact-field (dsel-get-field-by-name properties 'contact))
-           (contact-properties (plist-get contact-field :properties))
+           (contact-properties (dsel-field-properties contact-field))
            (address-field (dsel-get-field-by-name contact-properties 'address))
-           (address-properties (plist-get address-field :properties)))
+           (address-properties (dsel-field-properties address-field)))
       ;; Top level validation
-      (should (eq 'object (plist-get user-field :type)))
-      (should (equal '(name) (plist-get user-field :required)))
+      (should (eq 'object (dsel-field-type user-field)))
+      (should (equal '(name) (dsel-field-required user-field)))
 
       ;; Level 2 validation
-      (should (eq 'object (plist-get contact-field :type)))
+      (should (eq 'object (dsel-field-type contact-field)))
       (should (dsel-get-field-by-name contact-properties 'email))
       (should (dsel-get-field-by-name contact-properties 'phone))
 
       ;; Level 3 validation
-      (should (eq 'object (plist-get address-field :type)))
+      (should (eq 'object (dsel-field-type address-field)))
       (should (dsel-get-field-by-name address-properties 'street))
       (should (dsel-get-field-by-name address-properties 'city))
       (should (dsel-get-field-by-name address-properties 'country)))))
@@ -145,9 +145,9 @@
                                           :properties ((:name name :type string) ; :desc omitted for property 'name'
                                                        (:name age :type integer :desc "User age")))))))
     (let* ((user-field (dsel-signature-get-input-field sig 'user))
-           (props (plist-get user-field :properties))
+           (props (dsel-field-properties user-field))
            (name-prop (dsel-get-field-by-name props 'name)))
-      (should (string= (plist-get name-prop :desc) "")))) ; Verify desc defaults to ""
+      (should (string= (dsel-field-desc name-prop) "")))) ; Verify desc defaults to ""
 
   ;; Test that a property missing :type still errors
   (should-error
@@ -171,9 +171,9 @@
                                            :enum ["active" "inactive" "pending"]
                                            :optional t)))))
     (let ((status-field (dsel-signature-get-input-field sig 'status)))
-      (should (eq 'string (plist-get status-field :type)))
-      (should (plist-get status-field :optional))
-      (should (equal ["active" "inactive" "pending"] (plist-get status-field :enum))))))
+      (should (eq 'string (dsel-field-type status-field)))
+      (should (dsel-field-optional status-field))
+      (should (equal ["active" "inactive" "pending"] (dsel-field-enum status-field))))))
 
 (ert-deftest dsel-test-numeric-enums ()
   "Test enums with numeric values."
@@ -184,8 +184,8 @@
                                            :desc "Priority level"
                                            :enum [1 2 3 4 5])))))
     (let ((priority-field (dsel-signature-get-input-field sig 'priority-level)))
-      (should (eq 'integer (plist-get priority-field :type)))
-      (should (equal [1 2 3 4 5] (plist-get priority-field :enum))))))
+      (should (eq 'integer (dsel-field-type priority-field)))
+      (should (equal [1 2 3 4 5] (dsel-field-enum priority-field))))))
 
 
 ;;; Tests for Field Formatting
@@ -202,19 +202,19 @@
     ;; Check all field prefixes are capitalized properly
     (let ((fields (dsel-signature-input-fields sig)))
       (let ((simple-field (dsel-get-field-by-name fields 'simple-name)))
-        (should (string= "Simple-Name:" (plist-get simple-field :prefix))))
+        (should (string= "Simple-Name:" (dsel-field-prefix simple-field))))
 
       (let ((snake-field (dsel-get-field-by-name fields 'snake_case_name)))
-        (should (string= "Snake_Case_Name:" (plist-get snake-field :prefix))))
+        (should (string= "Snake_Case_Name:" (dsel-field-prefix snake-field))))
 
       (let ((camel-field (dsel-get-field-by-name fields 'camelCaseName)))
-        (should (string= "Camelcasename:" (plist-get camel-field :prefix))))
+        (should (string= "Camelcasename:" (dsel-field-prefix camel-field))))
 
       (let ((pascal-field (dsel-get-field-by-name fields 'PascalCaseName)))
-        (should (string= "Pascalcasename:" (plist-get pascal-field :prefix))))
+        (should (string= "Pascalcasename:" (dsel-field-prefix pascal-field))))
 
       (let ((upper-field (dsel-get-field-by-name fields 'UPPERCASE_NAME)))
-        (should (string= "Uppercase_Name:" (plist-get upper-field :prefix)))))))
+        (should (string= "Uppercase_Name:" (dsel-field-prefix upper-field)))))))
 
 ;;; Integration Tests for End-to-End Flow
 
