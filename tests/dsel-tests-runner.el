@@ -111,6 +111,7 @@ The first match is used. Tests can `let`-bind this.")
 (require 'dsel-signature-extended-tests)
 (require 'dsel-complex-types-tests)
 (require 'dsel-signature-tests)
+(require 'dsel-aio-tests)
 
 ;; Run tests
 
