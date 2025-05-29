@@ -215,6 +215,158 @@ If TIMEOUT seconds passes without completion, signal an
                         (should (equal '(:error error "Test error")
                                        (dsel-aio-await (dsel-aio-catch (funcall error-fn))))))))
 
+(ert-deftest dsel-test-aio-then-success ()
+  "Test dsel-aio-then with successful promise resolution."
+  (let ((promise (dsel-aio-promise))
+        (success-result nil)
+        (error-called nil))
+    ;; Set up callbacks
+    (dsel-aio-then promise
+                   (lambda (value)
+                     (setq success-result value))
+                   (lambda (err)
+                     (setq error-called t)))
+
+    ;; Resolve the promise
+    (dsel-aio-resolve promise (lambda () :test-success))
+
+    ;; Give time for callbacks to run
+    (sit-for 0.1)
+
+    ;; Verify success callback was called
+    (should (eq success-result :test-success))
+    (should (not error-called))))
+
+(ert-deftest dsel-test-aio-then-error ()
+  "Test dsel-aio-then with promise rejection via signal."
+  (let ((promise (dsel-aio-promise))
+        (success-called nil)
+        (error-result nil))
+    ;; Set up callbacks
+    (dsel-aio-then promise
+                   (lambda (value)
+                     (setq success-called t))
+                   (lambda (err)
+                     (setq error-result err)))
+
+    ;; Resolve the promise with an error function that signals
+    (dsel-aio-resolve promise (lambda () (error "Test promise rejection")))
+
+    ;; Give time for callbacks to run
+    (sit-for 0.1)
+
+    ;; Verify error callback was called
+    (should (not success-called))
+    (should error-result)
+    (should (equal (car error-result) 'error))
+    (should (equal (cadr error-result) "Test promise rejection"))))
+
+(ert-deftest dsel-test-aio-then-no-error-callback ()
+  "Test dsel-aio-then with no error callback provided."
+  (let ((promise (dsel-aio-promise))
+        (success-result nil))
+    ;; Set up only success callback
+    (dsel-aio-then promise
+                   (lambda (value)
+                     (setq success-result value)))
+
+    ;; Resolve the promise successfully
+    (dsel-aio-resolve promise (lambda () :no-error-callback))
+
+    ;; Give time for callback to run
+    (sit-for 0.1)
+
+    ;; Verify success callback was called
+    (should (eq success-result :no-error-callback))))
+
+(ert-deftest dsel-test-aio-then-success-callback-error ()
+  "Test dsel-aio-then when success callback itself throws an error."
+  (let ((promise (dsel-aio-promise))
+        (error-result nil))
+    ;; Set up callbacks where success callback errors
+    (dsel-aio-then promise
+                   (lambda (value)
+                     (error "Success callback error"))
+                   (lambda (err)
+                     (setq error-result err)))
+
+    ;; Resolve the promise successfully
+    (dsel-aio-resolve promise (lambda () :success-but-callback-errors))
+
+    ;; Give time for callbacks to run
+    (sit-for 0.1)
+
+    ;; Verify error callback was called due to success callback error
+    (should error-result)
+    (should (equal (car error-result) 'error))
+    (should (equal (cadr error-result) "Success callback error"))))
+
+(ert-deftest dsel-test-aio-then-already-resolved ()
+  "Test dsel-aio-then with already resolved promise."
+  (let ((promise (dsel-aio-promise))
+        (success-result nil))
+    ;; Resolve promise first
+    (dsel-aio-resolve promise (lambda () :already-resolved))
+
+    ;; Then add callback
+    (dsel-aio-then promise
+                   (lambda (value)
+                     (setq success-result value)))
+
+    ;; Give time for callback to run (should be scheduled immediately)
+    (sit-for 0.1)
+
+    ;; Verify callback was called
+    (should (eq success-result :already-resolved))))
+
+(ert-deftest dsel-test-aio-then-multiple-callbacks ()
+  "Test multiple dsel-aio-then callbacks on the same promise."
+  (let ((promise (dsel-aio-promise))
+        (result1 nil)
+        (result2 nil))
+    ;; Set up multiple callbacks
+    (dsel-aio-then promise
+                   (lambda (value)
+                     (setq result1 value)))
+
+    (dsel-aio-then promise
+                   (lambda (value)
+                     (setq result2 (format "second-%s" value))))
+
+    ;; Resolve the promise
+    (dsel-aio-resolve promise (lambda () :multi-callback))
+
+    ;; Give time for callbacks to run
+    (sit-for 0.1)
+
+    ;; Verify both callbacks were called
+    (should (eq result1 :multi-callback))
+    (should (equal result2 "second-:multi-callback"))))
+
+(ert-deftest dsel-test-aio-then-integration ()
+  "Test dsel-aio-then integration with async function and sleep."
+  (dsel-aio-with-test 3
+                      (let ((result nil)
+                            (error-occurred nil))
+                        ;; Create an async function that returns a promise
+                        (let ((async-fn (dsel-aio-lambda (delay value)
+                                          (dsel-aio-await (dsel-aio-sleep delay value)))))
+
+                          ;; Use dsel-aio-then with the async function
+                          (dsel-aio-then (funcall async-fn 0.5 :integration-test)
+                                         (lambda (value)
+                                           (setq result value))
+                                         (lambda (err)
+                                           (setq error-occurred t)))
+
+                          ;; Wait for async operation to complete
+                          (while (not result)
+                            (sit-for 0.1))
+
+                          ;; Verify result
+                          (should (eq result :integration-test))
+                          (should (not error-occurred))))))
+
 (provide 'dsel-aio-tests)
 
 ;;; dsel-aio-tests.el ends here

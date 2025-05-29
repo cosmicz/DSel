@@ -60,6 +60,29 @@ scheduled for the next event loop turn."
         (run-at-time 0 nil callback result)
       (push callback (dsel-aio-promise-callbacks promise)))))
 
+(defun dsel-aio-then (promise success-callback &optional error-callback)
+  "Add SUCCESS-CALLBACK and optional ERROR-CALLBACK to PROMISE.
+This provides a more convenient interface similar to JavaScript promises.
+
+SUCCESS-CALLBACK is called with the resolved value when the promise succeeds.
+ERROR-CALLBACK is called with the error when the promise fails (if provided).
+
+Note: In DSel, most errors are represented as prediction objects with error fields
+rather than promise rejections, so SUCCESS-CALLBACK should check result validity
+using `dsel-prediction-ok-p`. ERROR-CALLBACK handles promise rejections via signals."
+  (dsel-aio-listen
+   promise
+   (lambda (result)
+     (if error-callback
+         ;; Handle both successful results and promise rejections
+         (condition-case err
+             ;; Try to call the result function - this may signal an error
+             (funcall success-callback (funcall result))
+           ;; Catch any errors and route to error callback
+           (error (funcall error-callback err)))
+       ;; No error callback - just call success callback with result
+       (funcall success-callback (funcall result))))))
+
 (defun dsel-aio-resolve (promise value-function)
   "Resolve this PROMISE with VALUE-FUNCTION.
 
