@@ -118,6 +118,7 @@ The first match is used. Tests can `let`-bind this.")
 (require 'dsel-integration-tests)
 (require 'dsel-performance-tests)
 (require 'dsel-security-tests)
+(require 'dsel-module-tests)
 
 ;; Run tests
 
