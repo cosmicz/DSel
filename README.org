@@ -53,7 +53,6 @@ Cloud can be faster (than my M2 ):
 (setq llm-warn-on-nonfree nil)
 (dsel-configure
  :log-level 'info
- :trace 'my/dsel-traces
  :lm (make-llm-openai-compatible
       :url "https://openrouter.ai/api/v1"
       :key (my/get-openrouter-api-key)
@@ -489,7 +488,7 @@ DSel is currently in active develoment, its APIs may change.
 - [X] *Modular Programs*: Compose simple modules into complex LLM-powered applications
 - [X] *Optimizers*: improve LLM performance through few-shot example selection
 - [X] *Chain-of-Thought*: Built-in support for chain-of-thought reasoning
-- [ ] *Async*: asynchronous processing by default
+- [X] *Async*: asynchronous processing by default
 - [ ] *Tool Integration*: Integrate with external tools and APIs for enhanced functionality
 - [ ] *ReAct*: module for reasoning and action generation
 - [ ] *Retrievers*: modules for interacting with external data sources
