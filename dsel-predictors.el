@@ -77,8 +77,12 @@ Returns a dsel-aio-promise that resolves to a dsel-prediction object."
 
     ;; Perform async LLM call with error handling
     (condition-case err
-        (setq raw-llm-response
-              (dsel-aio-await (dsel-llm-chat-aio lm-to-use llm-prompt merged-config)))
+        (let ((response (dsel-aio-await (dsel-llm-chat-aio lm-to-use llm-prompt merged-config))))
+          ;; Handle multi-output format from LLM providers
+          (setq raw-llm-response
+                (if (and (listp response) (eq (car response) :text))
+                    (plist-get response :text)  ; Extract text from multi-output format
+                  response)))                    ; Use response as-is if it's a plain string
       (error (setq llm-call-error err)))
 
     (let ((prediction
