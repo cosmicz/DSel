@@ -27,11 +27,13 @@
 (require 'llm)
 
 ;; Load DSel modules
+(require 'dsel-aio)       ; Async I/O primitives (vendored aio.el)
 (require 'dsel-types)     ; Core data structures
 (require 'dsel-settings)  ; Configuration and settings
 (require 'dsel-adapter)   ; Adapter between DSel and llm.el
-(require 'dsel-predictors) ; Predictor modules for LLM interactions
+(require 'dsel-llm)       ; Async LLM integration using dsel-aio
 (require 'dsel-module)    ; Module base for building LLM applications
+(require 'dsel-predictors) ; Predictor modules for LLM interactions
 (require 'dsel-optimizers) ; Optimizers for improving LLM performance
 (require 'dsel-macros)    ; Definition macros for improved ergonomics
 
