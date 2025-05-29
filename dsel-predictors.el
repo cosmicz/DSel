@@ -51,93 +51,92 @@ Keyword arguments:
   (list predict))
 
 
-(cl-defmethod dsel-aforward ((predict dsel-predict) &rest kwargs)
+(dsel-defaforward dsel-predict (&rest kwargs)
   "Asynchronously execute PREDICT with KWARGS and return a promise.
 Returns a dsel-aio-promise that resolves to a dsel-prediction object."
-  (dsel-aio-with-async
-    (let* ((lm-to-use (or (dsel-predict-lm predict) dsel-settings--lm))
-           (adapter-to-use (or dsel-settings--adapter
-                               (make-dsel-default-chat-adapter)))
-           (current-inputs-alist
-            (let ((inputs nil))
-              (while kwargs
-                (let ((key (pop kwargs))
-                      (value (pop kwargs)))
-                  (when (and key value)
-                    (push (cons (dsel-keyword-to-symbol key) value) inputs))))
-              (nreverse inputs)))
-           (merged-config (or (dsel-predict-config predict) nil))
-           (llm-prompt (dsel-adapter-format-prompt
-                        adapter-to-use
-                        (dsel-predict-signature predict)
-                        (dsel-predict-demos predict)
-                        current-inputs-alist
-                        merged-config))
-           (raw-llm-response nil)
-           (llm-call-error nil))
+  (let* ((lm-to-use (or (dsel-predict-lm this) dsel-settings--lm))
+         (adapter-to-use (or dsel-settings--adapter
+                             (make-dsel-default-chat-adapter)))
+         (current-inputs-alist
+          (let ((inputs nil))
+            (while kwargs
+              (let ((key (pop kwargs))
+                    (value (pop kwargs)))
+                (when (and key value)
+                  (push (cons (dsel-keyword-to-symbol key) value) inputs))))
+            (nreverse inputs)))
+         (merged-config (or (dsel-predict-config this) nil))
+         (llm-prompt (dsel-adapter-format-prompt
+                      adapter-to-use
+                      (dsel-predict-signature this)
+                      (dsel-predict-demos this)
+                      current-inputs-alist
+                      merged-config))
+         (raw-llm-response nil)
+         (llm-call-error nil))
 
-      ;; Perform async LLM call with error handling
-      (condition-case err
-          (setq raw-llm-response
-                (dsel-aio-await (dsel-llm-chat-aio lm-to-use llm-prompt merged-config)))
-        (error (setq llm-call-error err)))
+    ;; Perform async LLM call with error handling
+    (condition-case err
+        (setq raw-llm-response
+              (dsel-aio-await (dsel-llm-chat-aio lm-to-use llm-prompt merged-config)))
+      (error (setq llm-call-error err)))
 
-      (let ((prediction
-             (if llm-call-error
-                 ;; LLM call failed - create prediction with error
-                 (apply #'dsel-make-prediction
-                        (append
-                         ;; Include input fields
-                         (cl-loop for (field-symbol . value) in current-inputs-alist
-                                  collect (dsel-symbol-to-keyword field-symbol)
-                                  collect value)
-                         ;; Include LLM metadata and error
-                         (list :lm-provider lm-to-use
-                               :raw-response nil
-                               :errors `((:type :llm-call
-                                                :message ,(error-message-string llm-call-error)
-                                                :error ,llm-call-error)))))
-               ;; LLM call succeeded - parse response and create prediction
-               (let* ((field-results (dsel-adapter-parse-output
-                                      adapter-to-use
-                                      (dsel-predict-signature predict)
-                                      raw-llm-response))
-                      (prediction-fields-alist nil)
-                      (accumulated-errors nil))
+    (let ((prediction
+           (if llm-call-error
+               ;; LLM call failed - create prediction with error
+               (apply #'dsel-make-prediction
+                      (append
+                       ;; Include input fields
+                       (cl-loop for (field-symbol . value) in current-inputs-alist
+                                collect (dsel-symbol-to-keyword field-symbol)
+                                collect value)
+                       ;; Include LLM metadata and error
+                       (list :lm-provider lm-to-use
+                             :raw-response nil
+                             :errors `((:type :llm-call
+                                              :message ,(error-message-string llm-call-error)
+                                              :error ,llm-call-error)))))
+             ;; LLM call succeeded - parse response and create prediction
+             (let* ((field-results (dsel-adapter-parse-output
+                                    adapter-to-use
+                                    (dsel-predict-signature this)
+                                    raw-llm-response))
+                    (prediction-fields-alist nil)
+                    (accumulated-errors nil))
 
-                 ;; Process field results to separate successful fields from errors
-                 (dolist (frp field-results)
-                   (let ((field-name (plist-get frp :name))
-                         (field-value (plist-get frp :value))
-                         (field-error (plist-get frp :error)))
-                     (if field-error
-                         (push field-error accumulated-errors)
-                       (push (cons field-name field-value) prediction-fields-alist))))
+               ;; Process field results to separate successful fields from errors
+               (dolist (frp field-results)
+                 (let ((field-name (plist-get frp :name))
+                       (field-value (plist-get frp :value))
+                       (field-error (plist-get frp :error)))
+                   (if field-error
+                       (push field-error accumulated-errors)
+                     (push (cons field-name field-value) prediction-fields-alist))))
 
-                 (apply #'dsel-make-prediction
-                        (append
-                         ;; Include input fields
-                         (cl-loop for (field-symbol . value) in current-inputs-alist
-                                  collect (dsel-symbol-to-keyword field-symbol)
-                                  collect value)
-                         ;; Include successfully parsed output fields
-                         (cl-loop for (field-symbol . value) in prediction-fields-alist
-                                  collect (dsel-symbol-to-keyword field-symbol)
-                                  collect value)
-                         ;; Include LLM metadata and parsing errors
-                         (list :lm-provider lm-to-use
-                               :raw-response raw-llm-response
-                               :errors (nreverse accumulated-errors))))))))
+               (apply #'dsel-make-prediction
+                      (append
+                       ;; Include input fields
+                       (cl-loop for (field-symbol . value) in current-inputs-alist
+                                collect (dsel-symbol-to-keyword field-symbol)
+                                collect value)
+                       ;; Include successfully parsed output fields
+                       (cl-loop for (field-symbol . value) in prediction-fields-alist
+                                collect (dsel-symbol-to-keyword field-symbol)
+                                collect value)
+                       ;; Include LLM metadata and parsing errors
+                       (list :lm-provider lm-to-use
+                             :raw-response raw-llm-response
+                             :errors (nreverse accumulated-errors))))))))
 
-        ;; Add to trace if enabled
-        (when dsel-settings--trace
-          (let ((trace-list (symbol-value dsel-settings--trace)))
-            (set dsel-settings--trace
-                 (cons (list predict current-inputs-alist prediction)
-                       trace-list))))
+      ;; Add to trace if enabled
+      (when dsel-settings--trace
+        (let ((trace-list (symbol-value dsel-settings--trace)))
+          (set dsel-settings--trace
+               (cons (list this current-inputs-alist prediction)
+                     trace-list))))
 
-        ;; Return the prediction (resolves the promise)
-        prediction))))
+      ;; Return the prediction (resolves the promise)
+      prediction)))
 
 (cl-defmethod dsel-module-reset-optimizable-state ((predict dsel-predict))
   "Reset 'compiled-p (from base) and demos for a dsel-predict instance."
