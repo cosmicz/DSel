@@ -15,6 +15,8 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'dsel-settings)  ; For dsel--log
+(require 'dsel-types)     ; For dsel-make-prediction
 
 (cl-defstruct dsel-module
   "Base module structure for building LLM application components."
@@ -22,9 +24,17 @@
   (submodules nil :type list)           ; Alist: (name . module) pairs for child modules/predictors
   compiled-p)                           ; Boolean: if the module has been optimized
 
+(cl-defgeneric dsel-aforward (module &rest kwargs)
+  "Asynchronously execute MODULE with KWARGS.
+Returns a `dsel-aio-promise' that resolves to a `dsel-prediction' object.
+The `dsel-prediction' object's `.errors' slot should be checked by the caller,
+as the promise will typically resolve even if operational errors occur,
+placing error details in the prediction object.
+Critical internal errors or unhandled conditions might cause promise rejection.")
+
 (cl-defgeneric dsel-forward (module &rest kwargs)
   "Execute MODULE with KWARGS and return a prediction.
-This is the main execution method for modules.")
+This is the synchronous execution method for modules.")
 
 (cl-defgeneric dsel-collect-predictors (module)
   "Recursively collect all active predictor instances from MODULE and its sub-modules.")
@@ -98,6 +108,39 @@ This finds named predictors at any depth.")
                   (dsel-module-submodules module))))
     (setf (dsel-module-submodules copy) submodule-copies)
     copy))
+
+;;; Async/Sync bridge and helper functions
+
+(defun dsel--kwargs-to-plist (kwargs)
+  "Convert KWARGS (list of alternating keys and values) to a plist.
+Helper function for error handling in sync wrapper methods."
+  (let ((result nil)
+        (remaining kwargs))
+    (while remaining
+      (let ((key (pop remaining))
+            (value (when remaining (pop remaining))))
+        (when key
+          (setq result (append result (list key value))))))
+    result))
+
+(cl-defmethod dsel-forward ((module dsel-module) &rest kwargs)
+  "Default implementation of synchronous forward execution.
+This is a convenience wrapper around `dsel-aforward' using `dsel-aio-wait-for'."
+  (condition-case err
+      (dsel-aio-wait-for (apply #'dsel-aforward module kwargs))
+    (dsel-aio-timeout
+     (dsel--log 'error "DSel sync call timed out for %S: %S" module err)
+     (apply #'dsel-make-prediction
+            (append (dsel--kwargs-to-plist kwargs)
+                    (list :errors `((:type :timeout :message "Synchronous call timed out"))))))
+    ;; Catch other Elisp errors that dsel-aio-wait-for might re-signal from a rejection
+    (error
+     (dsel--log 'error "Error in DSel sync call for %S: %S" module err)
+     (apply #'dsel-make-prediction
+            (append (dsel--kwargs-to-plist kwargs)
+                    (list :errors `((:type :sync-wrapper-error
+                                           :message ,(error-message-string err)
+                                           :original-error ,err))))))))
 
 (provide 'dsel-module)
 ;;; dsel-module.el ends here
