@@ -62,6 +62,8 @@ Cloud can be faster (than my M2 ):
 
 * Quick Start
 
+** Simple Synchronous Example
+
 #+begin_src elisp
 ;; 1. Define a signature (the schema for your LLM task)
 (dsel-defsignature quick-start-signature
@@ -72,10 +74,54 @@ Cloud can be faster (than my M2 ):
 ;; 2. Create a predictor (a module that uses the signature)
 (dsel-defpredict quick-start-predictor quick-start-signature)
 
-;; 3. Run the predictor
+;; 3. Run the predictor synchronously (blocks until complete)
 (let ((prediction (dsel-forward quick-start-predictor :question "What is the capital of France?")))
   (message "Answer: %s" (dsel-get-field prediction 'answer)))
 ;; Output: Answer: The capital of France is Paris.
+#+end_src
+
+** Async Example (Recommended)
+
+For interactive applications, use the async API with =dsel-aio-then=:
+
+#+begin_src elisp
+;; 1. Same signature and predictor as above
+
+;; 2. Run the predictor asynchronously (non-blocking)
+(dsel-aio-then
+ (dsel-aforward quick-start-predictor :question "What is machine learning?")
+ ;; Success callback
+ (lambda (prediction)
+   (message "Answer: %s" (dsel-get-field prediction 'answer)))
+ ;; Error callback
+ (lambda (err)
+   (message "Error: %s" err)))
+#+end_src
+
+** Modular Example
+
+Create reusable modules for complex applications:
+
+#+begin_src elisp
+;; 1. Define a question-answering module
+(dsel-defmodule qa-module
+  "A question-answering module with configurable strategies."
+  :submodules
+  ((predictor quick-start-predictor))
+  (response-style 'concise :type symbol))
+
+;; 2. Define its async behavior
+(dsel-defaforward qa-module (&key question style)
+  "Answer a question with the specified style."
+  (let ((predictor (cdr (assq 'predictor submodules))))
+    (dsel-aio-await (dsel-aforward predictor :question question))))
+
+;; 3. Use the module
+(let ((qa (make-qa-module :response-style 'detailed)))
+  (dsel-aio-then
+   (dsel-aforward qa :question "Explain photosynthesis")
+   (lambda (result) (message "QA Result: %s" (dsel-get-field result 'answer)))
+   (lambda (err) (message "QA Error: %s" err))))
 #+end_src
 
 * Core Concepts & Key Features
@@ -163,8 +209,109 @@ Module that prompts the LLM for step-by-step reasoning before answering. For com
   (message "Sentiment: %s" (dsel-get-field result 'sentiment)))
 #+end_src
 
-** Module (=dsel-module=)
-Base class for all runnable components in DSel.
+** Module (=dsel-module=) Async API (=dsel-defmodule= and =dsel-defaforward=)
+
+=dsel-module= is the base class for all runnable components in DSel.
+DSel provides powerful macros for creating modular, composable LLM applications with async-first design:
+
+*** Creating Custom Modules
+
+Use =dsel-defmodule= to create custom modules that combine multiple predictors:
+
+#+begin_src elisp
+;; Define a sentiment analysis module that combines basic and chain-of-thought predictors
+(dsel-defmodule sentiment-analysis-module
+  "A module that performs sentiment analysis with different strategies."
+  :submodules
+  ((basic-predictor sentiment-predictor)
+   (cot-predictor sentiment-cot-predictor))
+  (strategy 'basic :type symbol)
+  (use-reasoning nil :type boolean))
+#+end_src
+
+*** Defining Async Methods
+
+Use =dsel-defaforward= to define async forward methods for your modules:
+
+#+begin_src elisp
+;; Define the async forward method
+(dsel-defaforward sentiment-analysis-module (&key text strategy use-reasoning)
+  "Analyze sentiment of TEXT using the specified strategy."
+  (let* ((predictor-name (cond
+                          ((or use-reasoning (eq strategy 'cot)) 'cot-predictor)
+                          ((eq strategy 'basic) 'basic-predictor)
+                          (t 'basic-predictor)))
+         (predictor (cdr (assq predictor-name submodules))))
+    ;; Use dsel-aio-await to wait for async results
+    (dsel-aio-await (dsel-aforward predictor :text text))))
+#+end_src
+
+*** Async Execution
+
+Use =dsel-aio-then= for non-blocking async execution with callbacks:
+
+#+begin_src elisp
+;; Create module instance
+(setq my-module (make-sentiment-analysis-module :strategy 'cot))
+
+;; Async execution with callbacks
+(dsel-aio-then
+ (dsel-aforward my-module :text "I love this framework!" :use-reasoning t)
+ ;; Success callback
+ (lambda (prediction)
+   (message "Sentiment: %s" (dsel-get-field prediction 'sentiment))
+   (message "Reasoning: %s" (dsel-get-field prediction 'reasoning)))
+ ;; Error callback
+ (lambda (err)
+   (message "Error: %s" err)))
+#+end_src
+
+*** Synchronous Execution
+
+Use =dsel-forward= for blocking synchronous execution when needed:
+
+#+begin_src elisp
+;; Synchronous execution (blocks until complete)
+(let ((result (dsel-forward my-module :text "This is okay." :strategy 'basic)))
+  (message "Result: %s" (dsel-get-field result 'sentiment)))
+#+end_src
+
+*** Complex Module Composition
+
+Create sophisticated pipelines by chaining multiple async operations:
+
+#+begin_src elisp
+;; RAG module example
+(dsel-defmodule rag-module
+  "A Retrieval-Augmented Generation module."
+  :submodules
+  ((retriever retriever-predictor)
+   (generator generator-predictor))
+  (max-results 5 :type number))
+
+(dsel-defaforward rag-module (&key query)
+  "Execute RAG pipeline: retrieve documents, then generate answer."
+  (let* ((retriever (cdr (assq 'retriever submodules)))
+         ;; First, retrieve relevant documents
+         (retrieval-results (dsel-aio-await
+                             (dsel-aforward retriever
+                                            :query query
+                                            :max_results (rag-module-max-results this))))
+         ;; Extract and join documents
+         (documents (dsel-get-field retrieval-results 'results))
+         (context (mapconcat #'identity documents "\n\n"))
+         ;; Then generate answer using retrieved context
+         (generation-results (dsel-aio-await
+                              (dsel-aforward (cdr (assq 'generator submodules))
+                                             :query query
+                                             :context context))))
+    ;; Return combined results
+    (dsel-make-prediction
+     :query query
+     :context context
+     :answer (dsel-get-field generation-results 'answer)
+     :confidence (dsel-get-field generation-results 'confidence))))
+#+end_src
 
 ** Optimizer (=dsel-optimizer=)
 Compiles modules to improve their performance, such as selecting the best few-shot examples.
@@ -336,7 +483,7 @@ make test SELECTOR="adapter"  # Run all adapter tests
 DSel is currently in active develoment, its APIs may change.
 
 - [X] *Declarative Signatures*: Define LLM tasks using structured "signatures" with comprehensive type validation
-- [-] *Type Support*: Rich type system including strings, numbers, booleans, arrays, objects, and enums
+- [ ] *Type Support*: Rich type system including strings, numbers, booleans, arrays, objects, and enums
   - [ ] *Date* / *Time* types
 - [X] *Nested Structures*: Support for complex  nested objects and arrays with validation
 - [X] *Modular Programs*: Compose simple modules into complex LLM-powered applications
@@ -345,6 +492,7 @@ DSel is currently in active develoment, its APIs may change.
 - [ ] *Async*: asynchronous processing by default
 - [ ] *Tool Integration*: Integrate with external tools and APIs for enhanced functionality
 - [ ] *ReAct*: module for reasoning and action generation
+- [ ] *Retrievers*: modules for interacting with external data sources
 - [ ] *Refine*: Refine LLM outputs with additional context or examples
 - [ ] *Caching* and *Persistency*
 - [ ] *Assertions and Suggestions*: Validate and suggest improvements for LLM outputs
