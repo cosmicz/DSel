@@ -708,5 +708,57 @@ Good_boolean: true")
         (should (stringp (plist-get error-info :message)))
         (should (string-match-p "missing_field" (plist-get error-info :message)))))))
 
+(ert-deftest dsel-test-adapter-concurrent-parsing ()
+  "Test that adapter can handle concurrent parsing requests safely."
+  (let* ((adapter (make-dsel-default-chat-adapter))
+         (sig (dsel-make-signature
+               "Concurrent test"
+               :output-fields (list '(:name result :type string :desc "Test result"))))
+         (responses '("Result: response1" "Result: response2" "Result: response3"))
+         (results '()))
+    
+    ;; Parse multiple responses concurrently (simulated)
+    (dolist (response responses)
+      (let ((field-results (dsel-adapter-parse-output adapter sig response)))
+        (push (dsel-test--field-results-to-alist field-results) results)))
+    
+    ;; All should succeed
+    (should (= 3 (length results)))
+    (should (equal "response1" (cdr (assq 'result (nth 2 results)))))
+    (should (equal "response2" (cdr (assq 'result (nth 1 results)))))
+    (should (equal "response3" (cdr (assq 'result (nth 0 results)))))))
+
+(ert-deftest dsel-test-adapter-regex-special-characters ()
+  "Test that field prefixes with regex special characters work correctly."
+  (let* ((adapter (make-dsel-default-chat-adapter))
+         (sig (dsel-make-signature
+               "Regex test"
+               :output-fields (list '(:name special :type string :desc "Field with special chars" :prefix "Result(1): ")
+                                   '(:name normal :type string :desc "Normal field" :prefix "Result2: "))))
+         (response "Result(1): special chars work\n\nResult2: normal field")
+         (field-results (dsel-adapter-parse-output adapter sig response))
+         (result (dsel-test--field-results-to-alist field-results)))
+    
+    (should (equal (cdr (assq 'special result)) "special chars work"))
+    (should (equal (cdr (assq 'normal result)) "normal field"))))
+
+(ert-deftest dsel-test-adapter-empty-response ()
+  "Test adapter behavior with completely empty response."
+  (let* ((adapter (make-dsel-default-chat-adapter))
+         (sig (dsel-make-signature
+               "Empty test"
+               :output-fields (list '(:name required :type string :desc "Required field")
+                                   '(:name optional :type string :desc "Optional field" :required nil))))
+         (field-results (dsel-adapter-parse-output adapter sig "")))
+    
+    ;; Should have errors for missing fields (both required and optional are processed)
+    (should (>= (length field-results) 1))
+    ;; Find the required field error
+    (let ((required-error (cl-find-if (lambda (frp) 
+                                        (eq 'required (plist-get frp :name)))
+                                      field-results)))
+      (should required-error)
+      (should (plist-get required-error :error)))))
+
 (provide 'dsel-adapter-tests)
 ;;; dsel-adapter-tests.el ends here

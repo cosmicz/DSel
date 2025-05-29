@@ -112,6 +112,12 @@ The first match is used. Tests can `let`-bind this.")
 (require 'dsel-complex-types-tests)
 (require 'dsel-signature-tests)
 (require 'dsel-aio-tests)
+(require 'dsel-async-tests)
+(require 'dsel-llm-tests)
+(require 'dsel-predict-async-tests)
+(require 'dsel-integration-tests)
+(require 'dsel-performance-tests)
+(require 'dsel-security-tests)
 
 ;; Run tests
 
