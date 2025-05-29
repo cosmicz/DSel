@@ -38,19 +38,35 @@ llm-chat-async function into a promise-based API."
     (condition-case err
         (progn
           ;; Call llm-chat-async with success and error callbacks
-          (llm-chat-async
-           provider
-           prompt-struct
-           ;; Success callback - resolve the promise with the response
-           (lambda (response)
-             (dsel-aio-resolve promise (lambda () response)))
-           ;; Error callback - reject the promise with the error
-           (lambda (error-type error-message)
-             (dsel-aio-resolve promise
-                               (lambda ()
-                                 (signal error-type (list error-message)))))
-           ;; Pass along config if provided
-           config))
+          ;; Note: llm-fake doesn't support config parameters, so we only pass
+          ;; config to real providers that support it
+          (if (and config (not (llm-fake-p provider)))
+              ;; Real provider that might support config - pass it through
+              (llm-chat-async
+               provider
+               prompt-struct
+               ;; Success callback - resolve the promise with the response
+               (lambda (response)
+                 (dsel-aio-resolve promise (lambda () response)))
+               ;; Error callback - reject the promise with the error
+               (lambda (error-type error-message)
+                 (dsel-aio-resolve promise
+                                   (lambda ()
+                                     (signal error-type (list error-message)))))
+               ;; Pass along config
+               config)
+            ;; No config or fake provider - use standard call
+            (llm-chat-async
+             provider
+             prompt-struct
+             ;; Success callback - resolve the promise with the response
+             (lambda (response)
+               (dsel-aio-resolve promise (lambda () response)))
+             ;; Error callback - reject the promise with the error
+             (lambda (error-type error-message)
+               (dsel-aio-resolve promise
+                                 (lambda ()
+                                   (signal error-type (list error-message))))))))
       ;; Catch any immediate errors from llm-chat-async setup
       (error
        (dsel-aio-resolve promise
